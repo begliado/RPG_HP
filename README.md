@@ -1,28 +1,13 @@
 # Hogwarts RPG Asynchrone
 
-## Setup
+Un jeu de rôle Harry Potter asynchrone hébergé sur GitHub Pages.  
+Chaque joueur incarne un élève de Poudlard, se connecte via GitHub, est validé par le MJ, et peut réaliser actions, explorations et suivre des cours à son rythme, même en dehors des sessions synchrones.
 
-1. Crée les **Secrets** GitHub (`Settings > Secrets and variables > Actions`) :
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
+## Fonctionnalités principales
 
-2. Depuis GitHub UI, **Add file > Create new file** pour chacun des fichiers listés :
-   - `.env.local.example`
-   - `index.html`
-   - `package.json`
-   - `vite.config.js`
-   - `tailwind.config.js`
-   - `postcss.config.js`
-   - `src/index.css`
-   - `src/main.jsx`
-   - `src/App.jsx`
-   - `README.md`
-
-3. Active **GitHub Pages** (Settings > Pages) :
-   - Source : branche `main`
-   - Dossier : `/ (root)`
-
-4. (Optionnel) Lance un **Codespace** (Code > Codespaces) pour tester en ligne :
-   ```bash
-   npm install
-   npm run dev
+- **Auth GitHub OAuth** et validation manuelle des joueurs par le MJ  
+- **Dashboard MJ** pour gérer les accès et créer des événements  
+- **Interface React + Tailwind** hébergée sur GitHub Pages  
+- **Stockage des actions** et **logs de consultations** dans Supabase  
+- **Événements** automatisés et interventions ponctuelles du MJ  
+- **Intégration Discord** pour recevoir des notifications en temps réel
