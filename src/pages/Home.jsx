@@ -10,7 +10,7 @@ export default function Home() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState({ is_verified: false, is_mj: false });
 
-  // S’assure que le profil existe en base
+  // Vérifie ou crée le profil en base
   async function ensureProfile(u) {
     const { data, error } = await supabase
       .from('profiles')
@@ -30,48 +30,61 @@ export default function Home() {
   }
 
   useEffect(() => {
-    const session = supabase.auth.session();
-    const u = session?.user;
+    let subscription;
 
-    if (u) {
-      setUser(u);
-      ensureProfile(u).then(async () => {
-        const { data } = await supabase
+    async function initialize() {
+      // Récupère la session actuelle
+      const { data: { session } } = await supabase.auth.getSession();
+      const u = session?.user;
+      if (u) {
+        setUser(u);
+        await ensureProfile(u);
+        const { data: profileData } = await supabase
           .from('profiles')
           .select('is_verified, is_mj')
           .eq('id', u.id)
           .single();
-        if (data) {
-          setProfile({ is_verified: data.is_verified, is_mj: data.is_mj });
-        }
-        setLoading(false);
-      });
-    } else {
-      setLoading(false);
-    }
-
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const usr = session?.user;
-      setUser(usr || null);
-      if (usr) {
-        await ensureProfile(usr);
-        const { data } = await supabase
-          .from('profiles')
-          .select('is_verified, is_mj')
-          .eq('id', usr.id)
-          .single();
-        if (data) {
-          setProfile({ is_verified: data.is_verified, is_mj: data.is_mj });
+        if (profileData) {
+          setProfile({
+            is_verified: profileData.is_verified,
+            is_mj: profileData.is_mj
+          });
         }
       }
       setLoading(false);
-    });
 
-    return () => listener.unsubscribe();
+      // Écoute les changements d'authentification
+      subscription = supabase.auth.onAuthStateChange(
+        async (_event, sess) => {
+          const usr = sess?.user;
+          setUser(usr || null);
+          if (usr) {
+            await ensureProfile(usr);
+            const { data: pd } = await supabase
+              .from('profiles')
+              .select('is_verified, is_mj')
+              .eq('id', usr.id)
+              .single();
+            if (pd) {
+              setProfile({
+                is_verified: pd.is_verified,
+                is_mj: pd.is_mj
+              });
+            }
+          }
+          setLoading(false);
+        }
+      ).subscription;
+    }
+
+    initialize();
+    return () => {
+      if (subscription) supabase.auth.removeSubscription(subscription);
+    };
   }, []);
 
   const handleLogin = async () => {
-    await supabase.auth.signIn({ provider: 'github' });
+    await supabase.auth.signInWithOAuth({ provider: 'github' });
   };
 
   if (loading) {
