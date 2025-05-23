@@ -48,7 +48,10 @@ export default function Home() {
     (async () => {
       logDebug('🔄 initializing session');
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
         if (error) logDebug(`❌ getSession error: ${error.message}`);
         logDebug(`session: ${session?.user?.id || 'none'}`);
         const u = session?.user;
@@ -64,7 +67,9 @@ export default function Home() {
             logDebug(`❌ select is_verified error: ${profErr.message}`);
           } else {
             setProfile({ is_verified: prof.is_verified, is_mj: prof.is_mj });
-            logDebug(`profile flags: verified=${prof.is_verified}, mj=${prof.is_mj}`);
+            logDebug(
+              `profile flags: verified=${prof.is_verified}, mj=${prof.is_mj}`
+            );
           }
         }
       } catch (err) {
@@ -73,13 +78,15 @@ export default function Home() {
         setLoading(false);
       }
 
-      subscription = supabase.auth.onAuthStateChange(async (_e, sess) => {
-        logDebug(`🛰 onAuthStateChange event: ${_e}`);
-        const u2 = sess?.user;
-        setUser(u2 || null);
-        if (u2) await ensureProfile(u2);
-        setLoading(false);
-      }).subscription;
+      subscription = supabase.auth
+        .onAuthStateChange(async (_e, sess) => {
+          logDebug(`🛰 onAuthStateChange event: ${_e}`);
+          const u2 = sess?.user;
+          setUser(u2 || null);
+          if (u2) await ensureProfile(u2);
+          setLoading(false);
+        })
+        .subscription;
     })();
 
     return () => {
@@ -89,7 +96,13 @@ export default function Home() {
 
   const handleLogin = async () => {
     logDebug('🔐 signInWithOAuth start');
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'github' });
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'github',
+      options: {
+        // force la redirection vers la base de ta SPA sur GitHub Pages
+        redirectTo: 'https://begliado.github.io/RPG_HP/',
+      },
+    });
     if (error) {
       logDebug(`❌ signIn error: ${error.message}`);
     }
