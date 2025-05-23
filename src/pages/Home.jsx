@@ -9,88 +9,95 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState({ is_verified: false, is_mj: false });
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
 
-  // Vérifie ou crée le profil en base
+  // Ajoute un log en mémoire + console
+  function logDebug(msg: string) {
+    console.debug('[Home Debug]', msg);
+    setDebugLogs((logs) => [...logs, msg]);
+  }
+
   async function ensureProfile(u) {
+    logDebug(`ensureProfile for ${u.id}`);
     const { data, error } = await supabase
       .from('profiles')
       .select('id')
       .eq('id', u.id)
       .single();
     if (error && error.code !== 'PGRST116') {
-      console.error('Erreur lors de la vérification du profil :', error);
+      logDebug(`❌ select profile error: ${error.message}`);
       return;
     }
     if (!data) {
-      await supabase.from('profiles').insert({
-        id: u.id,
-        username: u.user_metadata.login || u.email
-      });
+      logDebug(`→ inserting new profile for ${u.id}`);
+      const { data: ins, error: insErr } = await supabase
+        .from('profiles')
+        .insert({ id: u.id, username: u.user_metadata.login || u.email });
+      if (insErr) {
+        logDebug(`❌ insert profile error: ${insErr.message}`);
+      } else {
+        logDebug(`✅ profile created: ${JSON.stringify(ins)}`);
+      }
+    } else {
+      logDebug('→ profile already exists');
     }
   }
 
   useEffect(() => {
     let subscription;
-
-    async function initialize() {
-      // Récupère la session actuelle
-      const { data: { session } } = await supabase.auth.getSession();
-      const u = session?.user;
-      if (u) {
-        setUser(u);
-        await ensureProfile(u);
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('is_verified, is_mj')
-          .eq('id', u.id)
-          .single();
-        if (profileData) {
-          setProfile({
-            is_verified: profileData.is_verified,
-            is_mj: profileData.is_mj
-          });
+    (async () => {
+      logDebug('🔄 initializing session');
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          logDebug(`❌ getSession error: ${error.message}`);
         }
-      }
-      setLoading(false);
-
-      // Écoute les changements d'authentification
-      subscription = supabase.auth.onAuthStateChange(
-        async (_event, sess) => {
-          const usr = sess?.user;
-          setUser(usr || null);
-          if (usr) {
-            await ensureProfile(usr);
-            const { data: pd } = await supabase
-              .from('profiles')
-              .select('is_verified, is_mj')
-              .eq('id', usr.id)
-              .single();
-            if (pd) {
-              setProfile({
-                is_verified: pd.is_verified,
-                is_mj: pd.is_mj
-              });
-            }
+        logDebug(`session: ${session?.user?.id || 'none'}`);
+        const u = session?.user;
+        if (u) {
+          setUser(u);
+          await ensureProfile(u);
+          const { data: prof, error: profErr } = await supabase
+            .from('profiles')
+            .select('is_verified, is_mj')
+            .eq('id', u.id)
+            .single();
+          if (profErr) {
+            logDebug(`❌ select is_verified error: ${profErr.message}`);
+          } else {
+            setProfile({ is_verified: prof.is_verified, is_mj: prof.is_mj });
+            logDebug(`profile flags: verified=${prof.is_verified}, mj=${prof.is_mj}`);
           }
-          setLoading(false);
         }
-      ).subscription;
-    }
+      } catch (err) {
+        logDebug(`❌ unexpected init error: ${err}`);
+      } finally {
+        setLoading(false);
+      }
 
-    initialize();
+      subscription = supabase.auth.onAuthStateChange(async (_e, sess) => {
+        logDebug(`🛰 onAuthStateChange event: ${_e}`);
+        const u2 = sess?.user;
+        setUser(u2 || null);
+        if (u2) await ensureProfile(u2);
+        setLoading(false);
+      }).subscription;
+    })();
+
     return () => {
       if (subscription) supabase.auth.removeSubscription(subscription);
     };
   }, []);
 
   const handleLogin = async () => {
-    await supabase.auth.signInWithOAuth({ provider: 'github' });
+    logDebug('🔐 signInWithOAuth start');
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'github' });
+    if (error) {
+      logDebug(`❌ signIn error: ${error.message}`);
+    }
   };
 
-  if (loading) {
-    return <p>Chargement...</p>;
-  }
-
+  if (loading) return <p>Chargement…</p>;
   if (!user) {
     return (
       <div className="container mx-auto p-4">
@@ -101,11 +108,13 @@ export default function Home() {
         >
           Se connecter avec GitHub
         </button>
+        <pre className="mt-4 p-2 bg-gray-100 text-xs overflow-auto">
+          {debugLogs.join('\n')}
+        </pre>
       </div>
     );
   }
 
-  // Affiche le statut de vérification pour les tests
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold">
@@ -121,6 +130,9 @@ export default function Home() {
           </span>
         )}
       </p>
+      <pre className="mt-4 p-2 bg-gray-100 text-xs overflow-auto">
+        {debugLogs.join('\n')}
+      </pre>
     </div>
   );
 }
