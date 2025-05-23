@@ -9,106 +9,77 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState({ is_verified: false, is_mj: false });
-  const [debugLogs, setDebugLogs] = useState([]);
 
-  // Ajoute un log en mémoire + console
-  function logDebug(msg) {
-    console.debug('[Home Debug]', msg);
-    setDebugLogs((logs) => [...logs, msg]);
-  }
-
-  async function ensureProfile(u) {
-    logDebug(`ensureProfile for ${u.id}`);
-    const { data, error } = await supabase
+  // Vérifie / crée le profil, puis redirige selon le rôle et l’existence d’un perso
+  async function initUser(u) {
+    // ensure profile exists
+    await supabase
       .from('profiles')
-      .select('id')
+      .upsert({ id: u.id, username: u.user_metadata.login || u.email }, { onConflict: 'id' });
+
+    // récupère flags is_verified / is_mj
+    const { data: p } = await supabase
+      .from('profiles')
+      .select('is_verified, is_mj')
       .eq('id', u.id)
       .single();
-    if (error && error.code !== 'PGRST116') {
-      logDebug(`❌ select profile error: ${error.message}`);
+    setProfile({ is_verified: p.is_verified, is_mj: p.is_mj });
+
+    if (p.is_mj) {
+      // MJ → dashboard MJ
+      navigate('/mj', { replace: true });
       return;
     }
-    if (!data) {
-      logDebug(`→ inserting new profile for ${u.id}`);
-      const { data: ins, error: insErr } = await supabase
-        .from('profiles')
-        .insert({ id: u.id, username: u.user_metadata.login || u.email });
-      if (insErr) {
-        logDebug(`❌ insert profile error: ${insErr.message}`);
-      } else {
-        logDebug(`✅ profile created: ${JSON.stringify(ins)}`);
-      }
+
+    // joueur classique → regarde s’il a déjà un personnage
+    const { data: chars } = await supabase
+      .from('characters')
+      .select('id')
+      .eq('user_id', u.id);
+    if (chars.length > 0) {
+      // redirige vers son premier perso existant
+      navigate(`/character/${chars[0].id}`, { replace: true });
+    } else if (p.is_verified) {
+      // joueur validé mais sans perso → page création
+      navigate('/create-character', { replace: true });
     } else {
-      logDebug('→ profile already exists');
+      // joueur non vérifié
+      navigate('/mj', { replace: true });
     }
   }
 
   useEffect(() => {
-    let subscription;
-    (async () => {
-      logDebug('🔄 initializing session');
-      try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
-        if (error) logDebug(`❌ getSession error: ${error.message}`);
-        logDebug(`session: ${session?.user?.id || 'none'}`);
-        const u = session?.user;
-        if (u) {
-          setUser(u);
-          await ensureProfile(u);
-          const { data: prof, error: profErr } = await supabase
-            .from('profiles')
-            .select('is_verified, is_mj')
-            .eq('id', u.id)
-            .single();
-          if (profErr) {
-            logDebug(`❌ select is_verified error: ${profErr.message}`);
-          } else {
-            setProfile({ is_verified: prof.is_verified, is_mj: prof.is_mj });
-            logDebug(
-              `profile flags: verified=${prof.is_verified}, mj=${prof.is_mj}`
-            );
-          }
-        }
-      } catch (err) {
-        logDebug(`❌ unexpected init error: ${err}`);
-      } finally {
-        setLoading(false);
+    let { data: listener } = supabase.auth.onAuthStateChange(async (_e, session) => {
+      const u = session?.user;
+      setUser(u || null);
+      if (u) {
+        await initUser(u);
       }
+      setLoading(false);
+    });
 
-      subscription = supabase.auth
-        .onAuthStateChange(async (_e, sess) => {
-          logDebug(`🛰 onAuthStateChange event: ${_e}`);
-          const u2 = sess?.user;
-          setUser(u2 || null);
-          if (u2) await ensureProfile(u2);
-          setLoading(false);
-        })
-        .subscription;
-    })();
+    // initial session check
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const u = session?.user;
+      setUser(u || null);
+      if (u) initUser(u);
+      else setLoading(false);
+    });
 
-    return () => {
-      if (subscription) supabase.auth.removeSubscription(subscription);
-    };
+    return () => listener.subscription.unsubscribe();
   }, []);
 
-  const handleLogin = async () => {
-    logDebug('🔐 signInWithOAuth start');
-    const { error } = await supabase.auth.signInWithOAuth({
+  const handleLogin = () => {
+    supabase.auth.signInWithOAuth({
       provider: 'github',
-      options: {
-        // force la redirection vers la base de ta SPA sur GitHub Pages
-        redirectTo: 'https://begliado.github.io/RPG_HP/',
-      },
+      options: { redirectTo: 'https://begliado.github.io/RPG_HP/' }
     });
-    if (error) {
-      logDebug(`❌ signIn error: ${error.message}`);
-    }
   };
 
-  if (loading) return <p>Chargement…</p>;
+  if (loading) {
+    return <p>Chargement…</p>;
+  }
+
   if (!user) {
     return (
       <div className="container mx-auto p-4">
@@ -119,31 +90,9 @@ export default function Home() {
         >
           Se connecter avec GitHub
         </button>
-        <pre className="mt-4 p-2 bg-gray-100 text-xs overflow-auto">
-          {debugLogs.join('\n')}
-        </pre>
       </div>
     );
   }
 
-  return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold">
-        Bonjour, {user.user_metadata.login || user.email}
-      </h1>
-      <p>
-        Statut de vérification :{' '}
-        {profile.is_verified ? (
-          <span className="text-green-600 font-semibold">OK</span>
-        ) : (
-          <span className="text-yellow-600 font-semibold">
-            En attente de vérif
-          </span>
-        )}
-      </p>
-      <pre className="mt-4 p-2 bg-gray-100 text-xs overflow-auto">
-        {debugLogs.join('\n')}
-      </pre>
-    </div>
-  );
+  return null;  // on ne doit jamais arriver ici, on redirige toujours avant
 }
