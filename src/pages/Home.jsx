@@ -9,10 +9,10 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState({ is_verified: false, is_mj: false });
-  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [debugLogs, setDebugLogs] = useState([]);
 
   // Ajoute un log en mémoire + console
-  function logDebug(msg: string) {
+  function logDebug(msg) {
     console.debug('[Home Debug]', msg);
     setDebugLogs((logs) => [...logs, msg]);
   }
@@ -49,9 +49,7 @@ export default function Home() {
       logDebug('🔄 initializing session');
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) {
-          logDebug(`❌ getSession error: ${error.message}`);
-        }
+        if (error) logDebug(`❌ getSession error: ${error.message}`);
         logDebug(`session: ${session?.user?.id || 'none'}`);
         const u = session?.user;
         if (u) {
