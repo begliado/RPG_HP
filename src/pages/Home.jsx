@@ -6,41 +6,28 @@ import { useNavigate } from 'react-router-dom';
 
 export default function Home() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState({ is_verified: false, is_mj: false });
+  const [loading, setLoading]   = useState(true);
+  const [user, setUser]         = useState(null);
+  const [profile, setProfile]   = useState({ is_verified: false, is_mj: false });
 
-  // initialise ou récupère la session OAuth depuis l’URL
-  async function handleRedirect() {
-    const { data, error } = await supabase.auth.getSessionFromUrl({ storeSession: true });
-    if (error && error.error_description) {
-      console.warn('Auth redirect error:', error.error_description);
-    }
-    return data?.session ?? null;
-  }
-
-  // logique post-auth : upsert profil, fetch flags et redirection
+  // crée ou met à jour le profil, charge les flags et redirige
   async function initUser(u) {
-    // create/update profile
     await supabase
       .from('profiles')
       .upsert({ id: u.id, username: u.user_metadata.login || u.email }, { onConflict: 'id' });
 
-    // fetch flags
     const { data: p } = await supabase
       .from('profiles')
       .select('is_verified, is_mj')
       .eq('id', u.id)
       .single();
-
     setProfile({ is_verified: p.is_verified, is_mj: p.is_mj });
 
     if (p.is_mj) {
       navigate('/mj', { replace: true });
       return;
     }
-
-    // joueur : existe-t-il déjà un perso ?
+    // sinon, joueur : regarde s’il a déjà un perso
     const { data: chars } = await supabase
       .from('characters')
       .select('id')
@@ -56,39 +43,31 @@ export default function Home() {
   }
 
   useEffect(() => {
-    let sub;
+    // 1) écoute les changements d’auth et garde la session
+    const { subscription } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const u = session?.user;
+      setUser(u || null);
+      if (u) await initUser(u);
+      else setLoading(false);
+    });
 
-    (async () => {
-      // 1) handle OAuth redirect if present
-      const redirectedSession = await handleRedirect();
-      const currentSession = redirectedSession ?? (await supabase.auth.getSession()).data.session;
-
-      if (currentSession?.user) {
-        setUser(currentSession.user);
-        await initUser(currentSession.user);
-      }
-
-      setLoading(false);
-
-      // 2) listen for future auth changes
-      sub = supabase.auth.onAuthStateChange(async (_event, session) => {
-        const u = session?.user;
-        setUser(u || null);
-        if (u) await initUser(u);
-      }).subscription;
-    })();
+    // 2) au premier chargement, récupère la session existante
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const u = session?.user;
+      setUser(u || null);
+      if (u) initUser(u);
+      else setLoading(false);
+    });
 
     return () => {
-      if (sub) supabase.auth.removeSubscription(sub);
+      subscription.unsubscribe();
     };
   }, [navigate]);
 
   const handleLogin = () => {
     supabase.auth.signInWithOAuth({
       provider: 'github',
-      options: {
-        redirectTo: 'https://begliado.github.io/RPG_HP/',
-      },
+      options: { redirectTo: 'https://begliado.github.io/RPG_HP/' }
     });
   };
 
@@ -108,5 +87,7 @@ export default function Home() {
       </div>
     );
   }
-  return null; // on ne rend rien, on redirige
+
+  // on ne rend rien : l’utilisateur est redirigé par initUser
+  return null;
 }
