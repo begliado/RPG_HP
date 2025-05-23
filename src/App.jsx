@@ -15,7 +15,7 @@ import CharacterPage from './pages/Character';
 
 export default function App() {
   return (
-    <Router basename={import.meta.env.BASE_URL}>
+    <Router basename="/RPG_HP/">
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/mj" element={<MJPage />} />
