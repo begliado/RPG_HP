@@ -7,8 +7,8 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    detectSessionInUrl: true,
-    persistSession: true,
-    autoRefreshToken: true,
+    detectSessionInUrl: true,    // consomme automatiquement ?code=… et #access_token=…
+    persistSession: true,        // garde la session en localStorage
+    autoRefreshToken: true,      // rafraîchit le token quand nécessaire
   },
 });
