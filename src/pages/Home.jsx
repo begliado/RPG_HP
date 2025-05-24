@@ -1,8 +1,10 @@
 // src/pages/Home.jsx
+
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 
+/* --- simple logger --- */
 const DEBUG = import.meta.env.VITE_DEBUG === 'true';
 const dbg = (...a) => DEBUG && console.debug('[Home]', ...a);
 
@@ -10,86 +12,101 @@ export default function Home() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
 
-  /* ------------------------------------------------------ */
-  /* Redirect après login                                   */
-  /* ------------------------------------------------------ */
-  async function handleUser(u) {
-    dbg('handleUser', u.id);
+  /* -------------------------------------------------- */
+  /*  Redirection selon rôle / perso                     */
+  /* -------------------------------------------------- */
+  async function handleUser(user) {
+    dbg('handleUser', user.id);
 
+    /* upsert profile */
     await supabase
       .from('profiles')
-      .upsert({ id: u.id, username: u.user_metadata.login || u.email }, { onConflict: 'id' });
+      .upsert(
+        { id: user.id, username: user.user_metadata.login || user.email },
+        { onConflict: 'id' }
+      );
 
-    const { data: p } = await supabase
+    /* flags */
+    const { data: profile } = await supabase
       .from('profiles')
       .select('is_verified,is_mj')
-      .eq('id', u.id)
+      .eq('id', user.id)
       .single();
 
-    dbg('flags', p);
+    dbg('flags', profile);
 
-    if (p.is_mj) {
+    if (profile.is_mj) {
       navigate('/mj', { replace: true });
       return;
     }
 
+    /* existing character ? */
     const { data: chars } = await supabase
       .from('characters')
       .select('id')
-      .eq('user_id', u.id);
+      .eq('user_id', user.id);
 
-    if (chars.length) navigate(`/character/${chars[0].id}`, { replace: true });
-    else if (p.is_verified) navigate('/create-character', { replace: true });
-    else navigate('/mj', { replace: true }); // joueur non vérifié
+    if (chars.length) {
+      navigate(`/character/${chars[0].id}`, { replace: true });
+    } else if (profile.is_verified) {
+      navigate('/create-character', { replace: true });
+    } else {
+      /* joueur non validé → MJ */
+      navigate('/mj', { replace: true });
+    }
   }
 
-  /* ------------------------------------------------------ */
-  /* useEffect                                              */
-  /* ------------------------------------------------------ */
+  /* -------------------------------------------------- */
+  /*  useEffect : gère Auth                             */
+  /* -------------------------------------------------- */
   useEffect(() => {
     (async () => {
-      /* 1 — Flux “code + state” */
       const url = new URL(window.location.href);
-      const code = url.searchParams.get('code');
-      const state = url.searchParams.get('state');
 
-      if (code && state) {
-        dbg('Code flow detected, exchanging code…');
-        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) {
-          dbg('exchangeCodeForSession error', error.message);
-          setLoading(false);
-          return;
-        }
-        dbg('Session obtained via code');
-        // Nettoie l’URL → « #/ »
-        window.history.replaceState({}, '', url.pathname + url.search.replace(/\\?.*/, '') + '#/');
+      /* ---------- 1. Code flow (query) --------------- */
+      const code = url.searchParams.get('code');
+      if (code) {
+        dbg('Code flow detected');
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) dbg('exchangeCodeForSession error', error.message);
+        /* nettoie la query */
+        window.history.replaceState({}, '', url.pathname + '#/');
       }
 
-      /* 2 — Flux “#access_token” */
-      const hash = window.location.hash;
-      if (hash.includes('access_token=')) {
-        const params = new URLSearchParams(hash.slice(1));
+      /* ---------- 2. Implicit flow (fragment) -------- */
+      const rawHash = window.location.hash;
+      if (rawHash.includes('access_token=')) {
+        /* supprime '#/' (2) ou '#' (1) */
+        const fragment = rawHash.startsWith('#/')
+          ? rawHash.slice(2)
+          : rawHash.slice(1);
+
+        const params = new URLSearchParams(fragment);
         const at = params.get('access_token');
         const rt = params.get('refresh_token');
+        dbg('Implicit flow – token found ?', !!at);
+
         if (at && rt) {
-          dbg('Implicit flow detected, setSession');
           const { error } = await supabase.auth.setSession(at, rt);
           if (error) dbg('setSession error', error.message);
+          /* remplace l’URL par /#/ */
           window.location.replace(url.pathname + '#/');
-          return;
+          return; // on laisse reloader
         }
       }
 
-      /* 3 — Listener auth + session initiale */
-      const { data: { subscription } } =
-        supabase.auth.onAuthStateChange((_e, sess) => {
-          dbg('Auth event', _e);
-          if (sess?.user) handleUser(sess.user);
-          else setLoading(false);
-        });
+      /* ---------- 3. listener + session existante ---- */
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_e, sess) => {
+        dbg('Auth event', _e);
+        if (sess?.user) handleUser(sess.user);
+        else setLoading(false);
+      });
 
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       dbg('Initial session', session);
       if (session?.user) handleUser(session.user);
       else setLoading(false);
@@ -98,15 +115,18 @@ export default function Home() {
     })();
   }, [navigate]);
 
-  /* ------------------------------------------------------ */
-  /* Bouton login                                           */
-  /* ------------------------------------------------------ */
+  /* -------------------------------------------------- */
+  /*  Bouton login                                      */
+  /* -------------------------------------------------- */
   const login = () =>
     supabase.auth.signInWithOAuth({
       provider: 'github',
       options: { redirectTo: 'https://begliado.github.io/RPG_HP/' },
     });
 
+  /* -------------------------------------------------- */
+  /*  UI                                                */
+  /* -------------------------------------------------- */
   if (loading) return <p>Chargement…</p>;
 
   return (
