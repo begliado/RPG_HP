@@ -1,99 +1,118 @@
 // src/pages/Home.jsx
+
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 
+/* ------------------------------------------------------------------
+ * Simple debug utility (activate with VITE_DEBUG=true in .env)
+ * ------------------------------------------------------------------ */
 const DEBUG = import.meta.env.VITE_DEBUG === 'true';
-const dbg = (...a) => DEBUG && console.debug('[Home]', ...a);
+const dbg = (...args) => DEBUG && console.debug('[Home]', ...args);
 
 export default function Home() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
 
-  /* -------------------------------------------------- */
-  /*  Redirige selon rôle / persos                      */
-  /* -------------------------------------------------- */
-  async function handleUser(u) {
-    dbg('handleUser', u.id);
+  /* ------------------------------------------------------------------
+   * Redirect user according to role / character state
+   * ------------------------------------------------------------------ */
+  async function handleUser(user) {
+    dbg('handleUser', user.id);
 
+    /* ensure profile */
     await supabase
       .from('profiles')
-      .upsert({ id: u.id, username: u.user_metadata.login || u.email }, { onConflict: 'id' });
+      .upsert(
+        { id: user.id, username: user.user_metadata.login || user.email },
+        { onConflict: 'id' }
+      );
 
-    const { data: p } = await supabase
+    /* flags */
+    const { data: profile } = await supabase
       .from('profiles')
       .select('is_verified,is_mj')
-      .eq('id', u.id)
+      .eq('id', user.id)
       .single();
 
-    if (p.is_mj) {
+    if (profile.is_mj) {
       dbg('→ MJ');
       navigate('/mj', { replace: true });
       return;
     }
 
+    /* characters */
     const { data: chars } = await supabase
       .from('characters')
       .select('id')
-      .eq('user_id', u.id);
+      .eq('user_id', user.id);
 
     if (chars.length) {
       dbg('→ character', chars[0].id);
       navigate(`/character/${chars[0].id}`, { replace: true });
-    } else if (p.is_verified) {
+    } else if (profile.is_verified) {
       dbg('→ create-character');
       navigate('/create-character', { replace: true });
     } else {
-      dbg('→ MJ (en attente vérif)');
+      dbg('→ MJ (pending verif)');
       navigate('/mj', { replace: true });
     }
   }
 
-  /* -------------------------------------------------- */
-  /*  useEffect : gère le fragment / query OAuth        */
-  /* -------------------------------------------------- */
+  /* ------------------------------------------------------------------
+   * useEffect: parse OAuth return, then listen for Auth events
+   * ------------------------------------------------------------------ */
   useEffect(() => {
     (async () => {
       const fullURL = new URL(window.location.href);
 
-      /* --- 1. code flow (query   OU   fragment) ------- */
+      /* ---------- 1. Exchange ?code=...&state=... (query or fragment) */
       let code = fullURL.searchParams.get('code');
+
       if (!code && window.location.hash.includes('code=')) {
-        const frag = window.location.hash.slice(1).replace(/^\\/?/, ''); // enlève #/ ou #
-        code = new URLSearchParams(frag).get('code');
+        // hash can be "#/?code=...&state=..." or "#code=..."
+        const fragment = window.location.hash.slice(1).replace(/^\/?/, '');
+        code = new URLSearchParams(fragment).get('code');
       }
+
       if (code) {
-        dbg('Code flow : exchangeCodeForSession');
+        dbg('Code flow detected, exchanging code');
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (error) dbg('exchangeCodeForSession error', error.message);
+        // clean URL to "#/"
         window.history.replaceState({}, '', fullURL.pathname + '#/');
       }
 
-      /* --- 2. implicit flow (#access_token…) --------- */
-      const h = window.location.hash;
-      if (h.includes('access_token=')) {
-        const clean = h.startsWith('#/') ? h.slice(2) : h.slice(1);
+      /* ---------- 2. Handle #access_token=... implicit flow -------- */
+      const hash = window.location.hash;
+      if (hash.includes('access_token=')) {
+        const clean = hash.startsWith('#/') ? hash.slice(2) : hash.slice(1);
         const params = new URLSearchParams(clean);
         const at = params.get('access_token');
         const rt = params.get('refresh_token');
+
         if (at && rt) {
-          dbg('Implicit flow : setSession');
+          dbg('Implicit flow detected, setSession');
           const { error } = await supabase.auth.setSession(at, rt);
           if (error) dbg('setSession error', error.message);
           window.location.replace(fullURL.pathname + '#/');
-          return; // re‐chargement
+          return; // wait for reload
         }
       }
 
-      /* --- 3. listener + session existante ----------- */
-      const { data: { subscription } } =
-        supabase.auth.onAuthStateChange((_e, sess) => {
-          dbg('Auth event', _e);
-          if (sess?.user) handleUser(sess.user);
-          else setLoading(false);
-        });
+      /* ---------- 3. Listen for auth changes & check stored session */
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event, session) => {
+        dbg('Auth event', _event);
+        if (session?.user) handleUser(session.user);
+        else setLoading(false);
+      });
 
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       dbg('Initial session', session);
       if (session?.user) handleUser(session.user);
       else setLoading(false);
@@ -102,18 +121,18 @@ export default function Home() {
     })();
   }, [navigate]);
 
-  /* -------------------------------------------------- */
-  /*  Login                                             */
-  /* -------------------------------------------------- */
+  /* ------------------------------------------------------------------
+   * OAuth login trigger
+   * ------------------------------------------------------------------ */
   const login = () =>
     supabase.auth.signInWithOAuth({
       provider: 'github',
       options: { redirectTo: 'https://begliado.github.io/RPG_HP/' },
     });
 
-  /* -------------------------------------------------- */
-  /*  UI                                                */
-  /* -------------------------------------------------- */
+  /* ------------------------------------------------------------------
+   * UI
+   * ------------------------------------------------------------------ */
   if (loading) return <p>Chargement…</p>;
 
   return (
