@@ -7,13 +7,34 @@ import { useNavigate } from 'react-router-dom';
 export default function Home() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
 
-  // Crée ou met à jour le profil et redirige selon le rôle
-  async function initUser(u) {
-    setUser(u);
+  // récupère/écoute la session Supabase et redirige en fonction du profil
+  useEffect(() => {
+    let sub = supabase.auth
+      .onAuthStateChange(async (_event, session) => {
+        if (session?.user) {
+          await handleUser(session.user);
+        } else {
+          setLoading(false);
+        }
+      })
+      .subscription;
 
-    // Upsert profil
+    // au premier chargement, récupère la session stockée (detectSessionInUrl active)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        handleUser(session.user);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => sub.unsubscribe();
+  }, [navigate]);
+
+  // crée/actualise le profil, récupère flags et redirige
+  async function handleUser(u) {
+    // upsert du profil
     await supabase
       .from('profiles')
       .upsert(
@@ -21,7 +42,6 @@ export default function Home() {
         { onConflict: 'id' }
       );
 
-    // Récupère les flags
     const { data: p } = await supabase
       .from('profiles')
       .select('is_verified, is_mj')
@@ -33,7 +53,7 @@ export default function Home() {
       return;
     }
 
-    // Joueur classique : existe-t-il un personnage ?
+    // joueur : a-t-il déjà un personnage ?
     const { data: chars } = await supabase
       .from('characters')
       .select('id')
@@ -44,57 +64,30 @@ export default function Home() {
     } else if (p.is_verified) {
       navigate('/create-character', { replace: true });
     } else {
+      // non-verifié ; renvoyer au dashboard MJ pour validation
       navigate('/mj', { replace: true });
     }
   }
 
-  useEffect(() => {
-    // Abonnement aux changements d’auth
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_, session) => {
-      if (session?.user) {
-        initUser(session.user);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    // Initialisation au chargement
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        initUser(session.user);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
-
   const handleLogin = () => {
     supabase.auth.signInWithOAuth({
       provider: 'github',
-      options: {
-        redirectTo: 'https://begliado.github.io/RPG_HP/',
-      },
+      options: { redirectTo: 'https://begliado.github.io/RPG_HP/' },
     });
   };
 
-  if (loading) return <p>Chargement…</p>;
-  if (!user) {
-    return (
-      <div className="container mx-auto p-4">
-        <h1 className="text-2xl font-bold">Bienvenue à Poudlard</h1>
-        <button
-          onClick={handleLogin}
-          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded"
-        >
-          Se connecter avec GitHub
-        </button>
-      </div>
-    );
+  if (loading) {
+    return <p>Chargement…</p>;
   }
-
-  return null; // l'utilisateur est redirigé immédiatement
+  return (
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold">Bienvenue à Poudlard</h1>
+      <button
+        onClick={handleLogin}
+        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded"
+      >
+        Se connecter avec GitHub
+      </button>
+    </div>
+  );
 }
