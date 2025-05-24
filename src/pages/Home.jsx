@@ -4,7 +4,9 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 
-/* Simple debug utility (toggle with VITE_DEBUG) */
+/* ------------------------------------------------------------------
+ * Simple debug utility (toggle with VITE_DEBUG=true)
+ * ------------------------------------------------------------------ */
 const DEBUG = import.meta.env.VITE_DEBUG === 'true';
 const dbg = (...args) => DEBUG && console.debug('[Home]', ...args);
 
@@ -12,32 +14,42 @@ export default function Home() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
 
-  /* Redirect based on profile */
+  /* ----------------------------------------------------------------
+   * Redirect based on profile flags / existing character
+   * ---------------------------------------------------------------- */
   async function handleUser(user) {
     dbg('handleUser', user.id);
 
+    // create or update profile
     await supabase
       .from('profiles')
-      .upsert({ id: user.id, username: user.user_metadata.login || user.email }, { onConflict: 'id' });
+      .upsert(
+        { id: user.id, username: user.user_metadata.login || user.email },
+        { onConflict: 'id' }
+      );
 
+    // fetch profile flags
     const { data: p } = await supabase
       .from('profiles')
       .select('is_verified,is_mj')
       .eq('id', user.id)
       .single();
+    dbg('Profile flags:', p);
 
     if (p.is_mj) {
-      dbg('→ MJ');
+      dbg('→ MJ dashboard');
       return navigate('/mj', { replace: true });
     }
 
+    // fetch characters
     const { data: chars } = await supabase
       .from('characters')
       .select('id')
       .eq('user_id', user.id);
+    dbg('Characters:', chars);
 
     if (chars.length) {
-      dbg('→ character', chars[0].id);
+      dbg('→ existing character');
       return navigate(`/character/${chars[0].id}`, { replace: true });
     }
 
@@ -50,56 +62,49 @@ export default function Home() {
     navigate('/mj', { replace: true });
   }
 
+  /* ----------------------------------------------------------------
+   * On mount: check session & listen for changes
+   * ---------------------------------------------------------------- */
   useEffect(() => {
-    (async () => {
-      // 1️⃣ Consume OAuth redirect (code flow or implicit) automatically
-      const { data: { session }, error: redirectError } = await supabase.auth.getSessionFromUrl({ storeSession: true });
-      if (redirectError) {
-        dbg('getSessionFromUrl error', redirectError.message);
-      } else {
-        dbg('getSessionFromUrl session', session);
-      }
-
-      // If a session was established, redirect immediately
+    // 1) Try to restore any existing session (detectSessionInUrl handles redirect code implicitly)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      dbg('initial getSession', session);
       if (session?.user) {
-        await handleUser(session.user);
-        return;
-      }
-
-      // 2️⃣ Fallback: listen for auth changes
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange((_event, sbSession) => {
-        dbg('onAuthStateChange', _event, sbSession);
-        if (sbSession?.user) {
-          handleUser(sbSession.user);
-        } else {
-          setLoading(false);
-        }
-      });
-
-      // 3️⃣ Initial session check (in case stored)
-      const { data: { session: storedSession } } = await supabase.auth.getSession();
-      dbg('initial getSession', storedSession);
-      if (storedSession?.user) {
-        await handleUser(storedSession.user);
+        handleUser(session.user);
       } else {
         setLoading(false);
       }
+    });
 
-      return () => subscription.unsubscribe();
-    })();
+    // 2) Subscribe to auth changes (SIGNED_IN event)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      dbg('onAuthStateChange', _event, session);
+      if (session?.user) {
+        handleUser(session.user);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
-  // Trigger GitHub OAuth
+  /* ----------------------------------------------------------------
+   * Trigger GitHub OAuth login
+   * ---------------------------------------------------------------- */
   const login = () =>
     supabase.auth.signInWithOAuth({
       provider: 'github',
-      options: {
-        redirectTo: 'https://begliado.github.io/RPG_HP/',
-      },
+      options: { redirectTo: 'https://begliado.github.io/RPG_HP/' },
     });
 
+  /* ----------------------------------------------------------------
+   * Render
+   * ---------------------------------------------------------------- */
   if (loading) {
     dbg('Rendering loading…');
     return <p>Chargement…</p>;
