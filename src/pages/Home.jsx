@@ -9,75 +9,65 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
 
-  // Initialise ou récupère la session et redirige selon le profil
-  async function initUserSession() {
-    // Récupère la session stockée ou dans l'URL
-    const {
-      data: { session: urlSession },
-      error: urlError
-    } = await supabase.auth.getSessionFromUrl({ storeSession: true });
-    if (urlError) console.warn('Auth redirect error:', urlError.error_description);
+  // Crée ou met à jour le profil et redirige selon le rôle
+  async function initUser(u) {
+    setUser(u);
 
-    const {
-      data: { session: storedSession }
-    } = await supabase.auth.getSession();
+    // Upsert profil
+    await supabase
+      .from('profiles')
+      .upsert(
+        { id: u.id, username: u.user_metadata.login || u.email },
+        { onConflict: 'id' }
+      );
 
-    const currentSession = urlSession || storedSession;
+    // Récupère les flags
+    const { data: p } = await supabase
+      .from('profiles')
+      .select('is_verified, is_mj')
+      .eq('id', u.id)
+      .single();
 
-    if (currentSession?.user) {
-      const u = currentSession.user;
-      setUser(u);
-
-      // Upsert profil
-      await supabase
-        .from('profiles')
-        .upsert(
-          { id: u.id, username: u.user_metadata.login || u.email },
-          { onConflict: 'id' }
-        );
-
-      // Récupère les flags
-      const { data: p } = await supabase
-        .from('profiles')
-        .select('is_verified, is_mj')
-        .eq('id', u.id)
-        .single();
-
-      if (p.is_mj) {
-        navigate('/mj', { replace: true });
-        return;
-      }
-
-      // Joueur classique
-      const {
-        data: chars
-      } = await supabase
-        .from('characters')
-        .select('id')
-        .eq('user_id', u.id);
-
-      if (chars.length) {
-        navigate(`/character/${chars[0].id}`, { replace: true });
-      } else if (p.is_verified) {
-        navigate('/create-character', { replace: true });
-      } else {
-        navigate('/mj', { replace: true });
-      }
+    if (p.is_mj) {
+      navigate('/mj', { replace: true });
+      return;
     }
 
-    setLoading(false);
+    // Joueur classique : existe-t-il un personnage ?
+    const { data: chars } = await supabase
+      .from('characters')
+      .select('id')
+      .eq('user_id', u.id);
+
+    if (chars.length) {
+      navigate(`/character/${chars[0].id}`, { replace: true });
+    } else if (p.is_verified) {
+      navigate('/create-character', { replace: true });
+    } else {
+      navigate('/mj', { replace: true });
+    }
   }
 
   useEffect(() => {
     // Abonnement aux changements d’auth
     const {
-      data: { subscription }
+      data: { subscription },
     } = supabase.auth.onAuthStateChange((_, session) => {
-      if (session?.user) initUserSession();
+      if (session?.user) {
+        initUser(session.user);
+      } else {
+        setLoading(false);
+      }
     });
 
-    // Premier init
-    initUserSession();
+    // Initialisation au chargement
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        initUser(session.user);
+      } else {
+        setLoading(false);
+      }
+    });
 
     return () => subscription.unsubscribe();
   }, [navigate]);
@@ -86,8 +76,8 @@ export default function Home() {
     supabase.auth.signInWithOAuth({
       provider: 'github',
       options: {
-        redirectTo: 'https://begliado.github.io/RPG_HP/#/'
-      }
+        redirectTo: 'https://begliado.github.io/RPG_HP/#/',
+      },
     });
   };
 
@@ -106,5 +96,5 @@ export default function Home() {
     );
   }
 
-  return null; // on redirige toujours avant de rendre
+  return null; // l'utilisateur est redirigé immédiatement
 }
