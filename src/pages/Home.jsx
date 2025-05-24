@@ -5,7 +5,7 @@ import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 
 /* ------------------------------------------------------------------
- * Debug utility (toggle with VITE_DEBUG=true)
+ * Simple debug utility (toggle with VITE_DEBUG=true in .env)
  * ------------------------------------------------------------------ */
 const DEBUG = import.meta.env.VITE_DEBUG === 'true';
 const dbg = (...args) => DEBUG && console.debug('[Home]', ...args);
@@ -41,7 +41,7 @@ export default function Home() {
       return navigate('/mj', { replace: true });
     }
 
-    // Fetch existing characters
+    // Fetch characters
     const { data: chars } = await supabase
       .from('characters')
       .select('id')
@@ -49,7 +49,7 @@ export default function Home() {
     dbg('Characters:', chars);
 
     if (chars.length) {
-      dbg('→ character', chars[0].id);
+      dbg('→ existing character', chars[0].id);
       return navigate(`/character/${chars[0].id}`, { replace: true });
     }
 
@@ -63,80 +63,61 @@ export default function Home() {
   }
 
   /* ----------------------------------------------------------------
-   * On mount: handle OAuth redirect (code or implicit), then listen
+   * On mount: log URL, restore or listen session via implicit flow
    * ---------------------------------------------------------------- */
   useEffect(() => {
-    (async () => {
-      const url = new URL(window.location.href);
+    dbg('URL on mount:', window.location.href);
+    dbg('location.search:', window.location.search);
+    dbg('location.hash:', window.location.hash);
 
-      // 1️⃣ Code flow via query string (?code=...&state=...)
-      const code = url.searchParams.get('code');
-      if (code) {
-        dbg('Code flow detected, exchanging code');
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) dbg('exchangeCodeForSession error', error.message);
-        // Clean URL to "#/"
-        window.history.replaceState({}, '', url.origin + url.pathname + '#/');
-      }
-
-      // 2️⃣ Implicit flow via fragment (#access_token=...)
-      const rawHash = window.location.hash;
-      if (rawHash.includes('access_token=')) {
-        // Strip leading "#/" or "#"
-        const frag = rawHash.startsWith('#/') ? rawHash.slice(2) : rawHash.slice(1);
-        const params = new URLSearchParams(frag);
-        const at = params.get('access_token');
-        const rt = params.get('refresh_token');
-        dbg('Implicit flow token found?', !!at);
-        if (at && rt) {
-          const { error } = await supabase.auth.setSession(at, rt);
-          if (error) dbg('setSession error', error.message);
-          window.history.replaceState({}, '', url.origin + url.pathname + '#/');
-          return; // wait for reload
-        }
-      }
-
-      // 3️⃣ Subscribe to auth changes
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange((_event, session) => {
-        dbg('onAuthStateChange', _event, session);
-        if (session?.user) {
-          handleUser(session.user);
-        } else {
-          setLoading(false);
-        }
-      });
-
-      // 4️⃣ Initial session check (stored session)
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      dbg('Initial getSession', session);
+    // 1️⃣ Try to restore any session (implicit fragment consumed by supabase-js)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      dbg('initial getSession', session);
       if (session?.user) {
         handleUser(session.user);
       } else {
         setLoading(false);
       }
+    });
 
-      return () => subscription.unsubscribe();
-    })();
+    // 2️⃣ Listen for SIGNED_IN events
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      dbg('onAuthStateChange', event, session);
+      if (session?.user) {
+        handleUser(session.user);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      dbg('cleanup subscription');
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
-  // Trigger GitHub OAuth
+  /* ----------------------------------------------------------------
+   * Trigger GitHub OAuth login (implicit flow)
+   * ---------------------------------------------------------------- */
   const login = () =>
     supabase.auth.signInWithOAuth({
       provider: 'github',
-      options: { redirectTo: 'https://begliado.github.io/RPG_HP/' },
+      options: {
+        redirectTo: 'https://begliado.github.io/RPG_HP/',
+        flowType: 'implicit',
+      },
     });
 
-  // Render loading state
+  /* ----------------------------------------------------------------
+   * Render
+   * ---------------------------------------------------------------- */
   if (loading) {
     dbg('Rendering loading…');
     return <p>Chargement…</p>;
   }
 
-  // Render login UI
   dbg('Rendering login UI');
   return (
     <div className="container mx-auto p-4">
