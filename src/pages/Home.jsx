@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 
+/* Simple debug utility (toggle with VITE_DEBUG) */
 const DEBUG = import.meta.env.VITE_DEBUG === 'true';
 const dbg = (...args) => DEBUG && console.debug('[Home]', ...args);
 
@@ -11,15 +12,13 @@ export default function Home() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
 
+  /* Redirect based on profile */
   async function handleUser(user) {
     dbg('handleUser', user.id);
 
     await supabase
       .from('profiles')
-      .upsert(
-        { id: user.id, username: user.user_metadata.login || user.email },
-        { onConflict: 'id' }
-      );
+      .upsert({ id: user.id, username: user.user_metadata.login || user.email }, { onConflict: 'id' });
 
     const { data: p } = await supabase
       .from('profiles')
@@ -29,8 +28,7 @@ export default function Home() {
 
     if (p.is_mj) {
       dbg('→ MJ');
-      navigate('/mj', { replace: true });
-      return;
+      return navigate('/mj', { replace: true });
     }
 
     const { data: chars } = await supabase
@@ -40,47 +38,74 @@ export default function Home() {
 
     if (chars.length) {
       dbg('→ character', chars[0].id);
-      navigate(`/character/${chars[0].id}`, { replace: true });
-    } else if (p.is_verified) {
-      dbg('→ create-character');
-      navigate('/create-character', { replace: true });
-    } else {
-      dbg('→ MJ (pending verif)');
-      navigate('/mj', { replace: true });
+      return navigate(`/character/${chars[0].id}`, { replace: true });
     }
+
+    if (p.is_verified) {
+      dbg('→ create-character');
+      return navigate('/create-character', { replace: true });
+    }
+
+    dbg('→ MJ (pending verification)');
+    navigate('/mj', { replace: true });
   }
 
   useEffect(() => {
-    // 1) v2 va automatiquement consommer le code ou le fragment
-    //    grâce à `detectSessionInUrl: true`
+    (async () => {
+      // 1️⃣ Consume OAuth redirect (code flow or implicit) automatically
+      const { data: { session }, error: redirectError } = await supabase.auth.getSessionFromUrl({ storeSession: true });
+      if (redirectError) {
+        dbg('getSessionFromUrl error', redirectError.message);
+      } else {
+        dbg('getSessionFromUrl session', session);
+      }
 
-    // 2) on écoute ensuite les changements de session
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_, session) => {
-      dbg('Auth event', session);
-      if (session?.user) handleUser(session.user);
-      else setLoading(false);
-    });
+      // If a session was established, redirect immediately
+      if (session?.user) {
+        await handleUser(session.user);
+        return;
+      }
 
-    // 3) enfin on récupère la session existante (si stockée)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      dbg('Initial session', session);
-      if (session?.user) handleUser(session.user);
-      else setLoading(false);
-    });
+      // 2️⃣ Fallback: listen for auth changes
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event, sbSession) => {
+        dbg('onAuthStateChange', _event, sbSession);
+        if (sbSession?.user) {
+          handleUser(sbSession.user);
+        } else {
+          setLoading(false);
+        }
+      });
 
-    return () => subscription.unsubscribe();
+      // 3️⃣ Initial session check (in case stored)
+      const { data: { session: storedSession } } = await supabase.auth.getSession();
+      dbg('initial getSession', storedSession);
+      if (storedSession?.user) {
+        await handleUser(storedSession.user);
+      } else {
+        setLoading(false);
+      }
+
+      return () => subscription.unsubscribe();
+    })();
   }, [navigate]);
 
+  // Trigger GitHub OAuth
   const login = () =>
     supabase.auth.signInWithOAuth({
       provider: 'github',
-      options: { redirectTo: 'https://begliado.github.io/RPG_HP/' },
+      options: {
+        redirectTo: 'https://begliado.github.io/RPG_HP/',
+      },
     });
 
-  if (loading) return <p>Chargement…</p>;
+  if (loading) {
+    dbg('Rendering loading…');
+    return <p>Chargement…</p>;
+  }
 
+  dbg('Rendering login UI');
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold">Bienvenue à Poudlard</h1>
