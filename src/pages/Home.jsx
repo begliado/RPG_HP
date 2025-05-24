@@ -6,74 +6,92 @@ import { useNavigate } from 'react-router-dom';
 
 export default function Home() {
   const navigate = useNavigate();
-  const [loading, setLoading]   = useState(true);
-  const [user, setUser]         = useState(null);
-  const [profile, setProfile]   = useState({ is_verified: false, is_mj: false });
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
 
-  // crée ou met à jour le profil, charge les flags et redirige
-  async function initUser(u) {
-    await supabase
-      .from('profiles')
-      .upsert({ id: u.id, username: u.user_metadata.login || u.email }, { onConflict: 'id' });
+  // Initialise ou récupère la session et redirige selon le profil
+  async function initUserSession() {
+    // Récupère la session stockée ou dans l'URL
+    const {
+      data: { session: urlSession },
+      error: urlError
+    } = await supabase.auth.getSessionFromUrl({ storeSession: true });
+    if (urlError) console.warn('Auth redirect error:', urlError.error_description);
 
-    const { data: p } = await supabase
-      .from('profiles')
-      .select('is_verified, is_mj')
-      .eq('id', u.id)
-      .single();
-    setProfile({ is_verified: p.is_verified, is_mj: p.is_mj });
+    const {
+      data: { session: storedSession }
+    } = await supabase.auth.getSession();
 
-    if (p.is_mj) {
-      navigate('/mj', { replace: true });
-      return;
+    const currentSession = urlSession || storedSession;
+
+    if (currentSession?.user) {
+      const u = currentSession.user;
+      setUser(u);
+
+      // Upsert profil
+      await supabase
+        .from('profiles')
+        .upsert(
+          { id: u.id, username: u.user_metadata.login || u.email },
+          { onConflict: 'id' }
+        );
+
+      // Récupère les flags
+      const { data: p } = await supabase
+        .from('profiles')
+        .select('is_verified, is_mj')
+        .eq('id', u.id)
+        .single();
+
+      if (p.is_mj) {
+        navigate('/mj', { replace: true });
+        return;
+      }
+
+      // Joueur classique
+      const {
+        data: chars
+      } = await supabase
+        .from('characters')
+        .select('id')
+        .eq('user_id', u.id);
+
+      if (chars.length) {
+        navigate(`/character/${chars[0].id}`, { replace: true });
+      } else if (p.is_verified) {
+        navigate('/create-character', { replace: true });
+      } else {
+        navigate('/mj', { replace: true });
+      }
     }
-    // sinon, joueur : regarde s’il a déjà un perso
-    const { data: chars } = await supabase
-      .from('characters')
-      .select('id')
-      .eq('user_id', u.id);
 
-    if (chars.length) {
-      navigate(`/character/${chars[0].id}`, { replace: true });
-    } else if (p.is_verified) {
-      navigate('/create-character', { replace: true });
-    } else {
-      navigate('/mj', { replace: true });
-    }
+    setLoading(false);
   }
 
   useEffect(() => {
-    // 1) écoute les changements d’auth et garde la session
-    const { subscription } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const u = session?.user;
-      setUser(u || null);
-      if (u) await initUser(u);
-      else setLoading(false);
+    // Abonnement aux changements d’auth
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_, session) => {
+      if (session?.user) initUserSession();
     });
 
-    // 2) au premier chargement, récupère la session existante
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const u = session?.user;
-      setUser(u || null);
-      if (u) initUser(u);
-      else setLoading(false);
-    });
+    // Premier init
+    initUserSession();
 
-    return () => {
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, [navigate]);
 
   const handleLogin = () => {
     supabase.auth.signInWithOAuth({
       provider: 'github',
-      options: { redirectTo: 'https://begliado.github.io/RPG_HP/' }
+      options: {
+        redirectTo: 'https://begliado.github.io/RPG_HP/#/'
+      }
     });
   };
 
-  if (loading) {
-    return <p>Chargement…</p>;
-  }
+  if (loading) return <p>Chargement…</p>;
   if (!user) {
     return (
       <div className="container mx-auto p-4">
@@ -88,6 +106,5 @@ export default function Home() {
     );
   }
 
-  // on ne rend rien : l’utilisateur est redirigé par initUser
-  return null;
+  return null; // on redirige toujours avant de rendre
 }
