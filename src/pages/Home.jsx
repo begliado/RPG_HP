@@ -76,7 +76,7 @@ export default function Home() {
     supabase.auth.signInWithOAuth({
       provider: 'github',
       options: {
-        redirectTo: 'https://begliado.github.io/RPG_HP/#/',
+        redirectTo: 'https://begliado.github.io/RPG_HP/',
       },
     });
   };
