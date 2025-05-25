@@ -78,16 +78,25 @@ export default function Home() {
   /* ----------------------------------------------------------------
    * Handle login button click
    * ---------------------------------------------------------------- */
-  const login = () => {
+  const login = async () => {
     dbg('login clicked');
     info('Starting OAuth signInWithOAuth');
-    supabase.auth
-      .signInWithOAuth({ provider: 'github', options: { redirectTo: 'https://begliado.github.io/RPG_HP/' } })
-      .then(({ error }) => {
-        if (error) err('signInWithOAuth error', error);
-        else dbg('signInWithOAuth initiated, waiting for redirect');
-      })
-      .catch(e => err('signInWithOAuth exception', e));
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: { redirectTo: 'https://begliado.github.io/RPG_HP/' }
+      });
+      if (error) {
+        err('signInWithOAuth error', error);
+      } else if (data?.url) {
+        dbg('Redirecting to OAuth URL', data.url);
+        window.location.href = data.url;
+      } else {
+        warn('No OAuth URL returned');
+      }
+    } catch (e) {
+      err('signInWithOAuth exception', e);
+    }
   };
 
   /* ----------------------------------------------------------------
