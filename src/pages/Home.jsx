@@ -19,7 +19,7 @@ export default function Home() {
    * After login: upsert profile & redirect based on role/state
    * ---------------------------------------------------------------- */
   async function handleUser(user) {
-    dbg('handleUser start', user);
+    dbg('handleUser start', user.id);
     try {
       // Upsert profile
       const { data: upserted, error: upsertError } = await supabase
@@ -79,12 +79,12 @@ export default function Home() {
   }
 
   /* ----------------------------------------------------------------
-   * On mount: clean OAuth fragment, restore session & listen for auth
+   * On mount: let supabase-js handle URL, restore session & listen
    * ---------------------------------------------------------------- */
   useEffect(() => {
     dbg('URL on mount:', window.location.href, 'search:', window.location.search, 'hash:', window.location.hash);
 
-    // 0️⃣ Code-flow or implicit-flow: let supabase-js handle URL
+    // 0️⃣ Let supabase handle code or implicit token
     supabase.auth.getSessionFromUrl({ storeSession: true })
       .then(({ data: { session }, error }) => {
         if (error) err('getSessionFromUrl error', error.message);
@@ -106,9 +106,7 @@ export default function Home() {
     });
 
     // 2️⃣ Listen for SIGNED_IN events
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       dbg('onAuthStateChange', event, session);
       if (session?.user) {
         dbg('Session via onAuthStateChange');
@@ -123,7 +121,6 @@ export default function Home() {
       dbg('cleanup subscription');
       subscription.unsubscribe();
     };
-  }, [navigate]);
   }, [navigate]);
 
   /* ----------------------------------------------------------------
