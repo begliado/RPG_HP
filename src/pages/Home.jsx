@@ -65,10 +65,18 @@ export default function Home() {
   }
 
   /* ----------------------------------------------------------------
-   * On mount: restore session & listen for auth changes
+   * On mount: clean OAuth fragment, restore session & listen for auth
    * ---------------------------------------------------------------- */
   useEffect(() => {
-    dbg('URL on mount:', window.location.href, 'hash:', window.location.hash);
+    // 0️⃣ Clean OAuth tokens in URL fragment if present
+    const rawHash = window.location.hash;
+    dbg('URL on mount:', window.location.href, 'hash:', rawHash);
+    if (rawHash.includes('access_token=')) {
+      // remove entire hash
+      const cleanUrl = window.location.pathname + window.location.search;
+      dbg('Cleaning OAuth fragment, new URL:', cleanUrl);
+      window.history.replaceState(null, '', cleanUrl);
+    }
 
     // 1️⃣ Try to restore any existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -99,7 +107,7 @@ export default function Home() {
   }, [navigate]);
 
   /* ----------------------------------------------------------------
-   * Trigger GitHub OAuth login using implicit flow
+   * Trigger GitHub OAuth login (implicit flow)
    * ---------------------------------------------------------------- */
   const login = () =>
     supabase.auth.signInWithOAuth({
