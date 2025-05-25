@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
  * ------------------------------------------------------------------ */
 const DEBUG = import.meta.env.VITE_DEBUG === 'true';
 const dbg = (...args) => DEBUG && console.debug('[Home]', ...args);
+const err = (...args) => console.error('[Home]', ...args);
 
 export default function Home() {
   const navigate = useNavigate();
@@ -18,74 +19,84 @@ export default function Home() {
    * After login: upsert profile & redirect based on role/state
    * ---------------------------------------------------------------- */
   async function handleUser(user) {
-    dbg('handleUser', user.id);
+    dbg('handleUser start', user);
+    try {
+      // Upsert profile
+      const { data: upserted, error: upsertError } = await supabase
+        .from('profiles')
+        .upsert(
+          { id: user.id, username: user.user_metadata.login || user.email },
+          { onConflict: 'id' }
+        );
+      if (upsertError) err('upsert profile error', upsertError);
+      else dbg('profile upserted', upserted);
 
-    // Upsert profile
-    await supabase
-      .from('profiles')
-      .upsert(
-        { id: user.id, username: user.user_metadata.login || user.email },
-        { onConflict: 'id' }
-      );
+      // Fetch profile flags
+      const { data: p, error: profileErr } = await supabase
+        .from('profiles')
+        .select('is_verified,is_mj')
+        .eq('id', user.id)
+        .single();
+      if (profileErr) {
+        err('fetch profile flags error', profileErr);
+      } else {
+        dbg('Profile flags:', p);
+      }
 
-    // Fetch profile flags
-    const { data: p } = await supabase
-      .from('profiles')
-      .select('is_verified,is_mj')
-      .eq('id', user.id)
-      .single();
+      if (p?.is_mj) {
+        dbg('Branch: MJ');
+        dbg('Navigating to /mj');
+        return navigate('/mj', { replace: true });
+      }
 
-    dbg('Profile flags:', p);
+      // Fetch existing characters
+      const { data: chars, error: charErr } = await supabase
+        .from('characters')
+        .select('id')
+        .eq('user_id', user.id);
+      if (charErr) err('fetch characters error', charErr);
+      else dbg('Characters:', chars);
 
-    if (p.is_mj) {
-      dbg('→ MJ dashboard');
-      return navigate('/mj', { replace: true });
+      if (chars?.length) {
+        dbg('Branch: existing character');
+        dbg('Navigating to /character/', chars[0].id);
+        return navigate(`/character/${chars[0].id}`, { replace: true });
+      }
+
+      if (p?.is_verified) {
+        dbg('Branch: create-character');
+        dbg('Navigating to /create-character');
+        return navigate('/create-character', { replace: true });
+      }
+
+      dbg('Branch: pending verification redirects to MJ');
+      dbg('Navigating to /mj');
+      navigate('/mj', { replace: true });
+    } catch (e) {
+      err('Unexpected handleUser error', e);
+      setLoading(false);
     }
-
-    // Fetch existing characters
-    const { data: chars } = await supabase
-      .from('characters')
-      .select('id')
-      .eq('user_id', user.id);
-
-    dbg('Characters:', chars);
-
-    if (chars.length) {
-      dbg('→ existing character', chars[0].id);
-      return navigate(`/character/${chars[0].id}`, { replace: true });
-    }
-
-    if (p.is_verified) {
-      dbg('→ create-character');
-      return navigate('/create-character', { replace: true });
-    }
-
-    dbg('→ MJ (pending verification)');
-    navigate('/mj', { replace: true });
   }
 
   /* ----------------------------------------------------------------
    * On mount: clean OAuth fragment, restore session & listen for auth
    * ---------------------------------------------------------------- */
   useEffect(() => {
-    // 0️⃣ Clean OAuth tokens in URL fragment if present
+    dbg('URL on mount:', window.location.href, 'hash:', window.location.hash);
+    // 0️⃣ Clean OAuth fragment if present
     const rawHash = window.location.hash;
-    dbg('URL on mount:', window.location.href, 'hash:', rawHash);
     if (rawHash.includes('access_token=')) {
-      // remove entire hash
       const cleanUrl = window.location.pathname + window.location.search;
       dbg('Cleaning OAuth fragment, new URL:', cleanUrl);
       window.history.replaceState(null, '', cleanUrl);
     }
 
-    // 1️⃣ Try to restore any existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // 1️⃣ Restore any existing session
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) err('getSession error', error);
       dbg('initial getSession', session);
-      if (session?.user) {
-        handleUser(session.user);
-      } else {
-        setLoading(false);
-      }
+      if (session?.user) handleUser(session.user);
+      else setLoading(false);
     });
 
     // 2️⃣ Listen for SIGNED_IN events
@@ -93,11 +104,8 @@ export default function Home() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       dbg('onAuthStateChange', event, session);
-      if (session?.user) {
-        handleUser(session.user);
-      } else {
-        setLoading(false);
-      }
+      if (session?.user) handleUser(session.user);
+      else setLoading(false);
     });
 
     return () => {
@@ -107,15 +115,17 @@ export default function Home() {
   }, [navigate]);
 
   /* ----------------------------------------------------------------
-   * Trigger GitHub OAuth login (implicit flow)
+   * Trigger GitHub OAuth login
    * ---------------------------------------------------------------- */
-  const login = () =>
+  const login = () => {
+    dbg('login click, starting OAuth');
     supabase.auth.signInWithOAuth({
       provider: 'github',
       options: {
         redirectTo: 'https://begliado.github.io/RPG_HP/',
       },
-    });
+    }).catch(e => err('signInWithOAuth error', e));
+  };
 
   /* ----------------------------------------------------------------
    * Render
