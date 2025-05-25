@@ -85,7 +85,8 @@ export default function Home() {
         dbg('signInWithOAuth returned data object', data);
         if (data?.url) {
           dbg('Before window.location.assign to OAuth URL');
-          window.location.assign(data.url);
+          dbg('Using location.replace for OAuth URL');
+          window.location.replace(data.url);
           dbg('After window.location.assign – this should never log if navigation succeeds');
         } else {
           warn('No OAuth URL returned', data);
