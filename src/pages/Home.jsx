@@ -106,7 +106,6 @@ export default function Home() {
       provider: 'github',
       options: {
         redirectTo: 'https://begliado.github.io/RPG_HP/',
-        flowType: 'implicit',   // force implicit (token in fragment)
       },
     });
 
