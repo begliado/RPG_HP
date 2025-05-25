@@ -14,20 +14,20 @@ const warn = (...args) => console.warn('[Home]', ...args);
 const err = (...args) => console.error('[Home]', ...args);
 
 export default function Home() {
-  dbg('Component render start');
+  dbg('Component render start, href=', window.location.href);
   const navigate = useNavigate();
+
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState({ is_verified: false, is_mj: false });
   const [characters, setCharacters] = useState([]);
 
   /* ----------------------------------------------------------------
-   * Initialize data for authenticated user
+   * Initialize user data
    * ---------------------------------------------------------------- */
   async function initData(user) {
     dbg('initData start for user', user.id);
     try {
-      // Upsert profile
       info('Upserting profile for', user.id);
       const { data: upserted, error: upsertError } = await supabase
         .from('profiles')
@@ -35,35 +35,28 @@ export default function Home() {
           { id: user.id, username: user.user_metadata.login || user.email },
           { onConflict: 'id' }
         );
-      if (upsertError) {
-        err('Upsert error', upsertError);
-      } else {
-        dbg('Upsert result', upserted);
-      }
+      if (upsertError) err('Upsert error', upsertError);
+      else dbg('Upsert result', upserted);
 
-      // Fetch profile flags
       info('Fetching profile flags for', user.id);
       const { data: p, error: profileErr } = await supabase
         .from('profiles')
         .select('is_verified,is_mj')
         .eq('id', user.id)
         .single();
-      if (profileErr) {
-        err('Fetch profile flags error', profileErr);
-      } else {
+      if (profileErr) err('Fetch profile flags error', profileErr);
+      else {
         dbg('Profile flags fetched', p);
         setProfile({ is_verified: p.is_verified, is_mj: p.is_mj });
       }
 
-      // Fetch characters
       info('Fetching characters for', user.id);
       const { data: chars, error: charErr } = await supabase
         .from('characters')
         .select('id,name')
         .eq('user_id', user.id);
-      if (charErr) {
-        err('Fetch characters error', charErr);
-      } else {
+      if (charErr) err('Fetch characters error', charErr);
+      else {
         dbg('Characters fetched', chars);
         setCharacters(chars || []);
       }
@@ -76,10 +69,10 @@ export default function Home() {
   }
 
   /* ----------------------------------------------------------------
-   * Handle login button click
+   * Handle login flow
    * ---------------------------------------------------------------- */
   const login = async () => {
-    dbg('login clicked');
+    dbg('login clicked – current href:', window.location.href);
     info('Starting OAuth signInWithOAuth');
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
@@ -88,11 +81,14 @@ export default function Home() {
       });
       if (error) {
         err('signInWithOAuth error', error);
-      } else if (data?.url) {
-        dbg('Redirecting to OAuth URL', data.url);
-        window.location.href = data.url;
       } else {
-        warn('No OAuth URL returned');
+        dbg('signInWithOAuth returned data object', data);
+        if (data?.url) {
+          dbg('Redirecting to OAuth URL:', data.url);
+          window.location.assign(data.url);
+        } else {
+          warn('No OAuth URL returned', data);
+        }
       }
     } catch (e) {
       err('signInWithOAuth exception', e);
@@ -100,15 +96,12 @@ export default function Home() {
   };
 
   /* ----------------------------------------------------------------
-   * Listen for authentication state
+   * Session and auth state listener
    * ---------------------------------------------------------------- */
   useEffect(() => {
     dbg('useEffect mount');
-    // Initial session check
     supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        err('getSession error', error);
-      }
+      if (error) err('getSession error', error);
       dbg('getSession returned', session);
       if (session?.user) {
         info('Session found on mount, user:', session.user.id);
@@ -121,10 +114,7 @@ export default function Home() {
       }
     });
 
-    // Auth state change listener
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       dbg('onAuthStateChange event', event, 'session', session);
       if (session?.user) {
         info('SIGNED_IN event for', session.user.id);
@@ -144,8 +134,18 @@ export default function Home() {
   }, []);
 
   /* ----------------------------------------------------------------
-   * Render logic
+   * Monitor URL changes
    * ---------------------------------------------------------------- */
+  useEffect(() => {
+    const onChange = () => dbg('URL changed:', window.location.href);
+    window.addEventListener('hashchange', onChange);
+    window.addEventListener('popstate', onChange);
+    return () => {
+      window.removeEventListener('hashchange', onChange);
+      window.removeEventListener('popstate', onChange);
+    };
+  }, []);
+
   dbg('Render phase, loading=', loading, 'user=', user);
 
   if (loading) {
