@@ -71,9 +71,6 @@ export default function Home() {
   /* ----------------------------------------------------------------
    * Handle login flow
    * ---------------------------------------------------------------- */
-    /* ----------------------------------------------------------------
-   * Handle login flow
-   * ---------------------------------------------------------------- */
   const login = async () => {
     dbg('login clicked – current href:', window.location.href);
     info('Starting OAuth signInWithOAuth');
@@ -104,6 +101,13 @@ export default function Home() {
    * ---------------------------------------------------------------- */
   useEffect(() => {
     dbg('useEffect mount');
+    dbg('Location details:', {
+      protocol: window.location.protocol,
+      host: window.location.host,
+      pathname: window.location.pathname,
+      search: window.location.search,
+      hash: window.location.hash
+    });
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (error) err('getSession error', error);
       dbg('getSession returned', session);
