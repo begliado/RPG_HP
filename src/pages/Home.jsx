@@ -71,6 +71,9 @@ export default function Home() {
   /* ----------------------------------------------------------------
    * Handle login flow
    * ---------------------------------------------------------------- */
+    /* ----------------------------------------------------------------
+   * Handle login flow
+   * ---------------------------------------------------------------- */
   const login = async () => {
     dbg('login clicked – current href:', window.location.href);
     info('Starting OAuth signInWithOAuth');
@@ -84,8 +87,9 @@ export default function Home() {
       } else {
         dbg('signInWithOAuth returned data object', data);
         if (data?.url) {
-          dbg('Redirecting to OAuth URL:', data.url);
+          dbg('Before window.location.assign to OAuth URL');
           window.location.assign(data.url);
+          dbg('After window.location.assign – this should never log if navigation succeeds');
         } else {
           warn('No OAuth URL returned', data);
         }
