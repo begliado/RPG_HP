@@ -21,7 +21,6 @@ export default function Home() {
   async function handleUser(user) {
     dbg('handleUser start', user.id);
     try {
-      // Upsert profile
       const { data: upserted, error: upsertError } = await supabase
         .from('profiles')
         .upsert(
@@ -31,25 +30,20 @@ export default function Home() {
       if (upsertError) err('upsert profile error', upsertError);
       else dbg('profile upserted', upserted);
 
-      // Fetch profile flags
       const { data: p, error: profileErr } = await supabase
         .from('profiles')
         .select('is_verified,is_mj')
         .eq('id', user.id)
         .single();
-      if (profileErr) {
-        err('fetch profile flags error', profileErr);
-      } else {
-        dbg('Profile flags:', p);
-      }
+      if (profileErr) err('fetch profile flags error', profileErr);
+      else dbg('Profile flags:', p);
 
       if (p?.is_mj) {
         dbg('Branch: MJ');
-        dbg('Navigating to /mj');
-        return navigate('/mj', { replace: true });
+        navigate('/mj', { replace: true });
+        return;
       }
 
-      // Fetch existing characters
       const { data: chars, error: charErr } = await supabase
         .from('characters')
         .select('id')
@@ -59,18 +53,17 @@ export default function Home() {
 
       if (chars?.length) {
         dbg('Branch: existing character');
-        dbg('Navigating to /character/', chars[0].id);
-        return navigate(`/character/${chars[0].id}`, { replace: true });
+        navigate(`/character/${chars[0].id}`, { replace: true });
+        return;
       }
 
       if (p?.is_verified) {
         dbg('Branch: create-character');
-        dbg('Navigating to /create-character');
-        return navigate('/create-character', { replace: true });
+        navigate('/create-character', { replace: true });
+        return;
       }
 
-      dbg('Branch: pending verification redirects to MJ');
-      dbg('Navigating to /mj');
+      dbg('Branch: pending verification');
       navigate('/mj', { replace: true });
     } catch (e) {
       err('Unexpected handleUser error', e);
@@ -79,20 +72,57 @@ export default function Home() {
   }
 
   /* ----------------------------------------------------------------
-   * On mount: let supabase-js handle URL, restore session & listen
+   * On mount: manual code/fragment handling, restore session & listen
    * ---------------------------------------------------------------- */
   useEffect(() => {
-    dbg('URL on mount:', window.location.href, 'search:', window.location.search, 'hash:', window.location.hash);
+    const url = new URL(window.location.href);
+    const rawHash = window.location.hash;
+    const code = url.searchParams.get('code');
 
-    // 0️⃣ Let supabase handle code or implicit token
-    supabase.auth.getSessionFromUrl({ storeSession: true })
-      .then(({ data: { session }, error }) => {
-        if (error) err('getSessionFromUrl error', error.message);
-        else dbg('getSessionFromUrl session', session);
-      })
-      .catch(e => err('getSessionFromUrl exception', e));
+    dbg('URL on mount:', url.href);
+    dbg('search:', url.search, 'hash:', rawHash);
 
-    // 1️⃣ Restore any existing session
+    // 1️⃣ Code Flow PKCE: exchange code
+    if (code) {
+      dbg('Detected code flow, code=', code);
+      supabase.auth
+        .exchangeCodeForSession(code)
+        .then(({ data: { session }, error }) => {
+          if (error) err('exchangeCodeForSession error', error.message);
+          else {
+            dbg('exchangeCodeForSession session', session);
+            handleUser(session.user);
+          }
+          window.history.replaceState(null, '', url.pathname + '#/');
+        })
+        .catch(e => err('exchangeCodeForSession exception', e));
+      return;
+    }
+
+    // 2️⃣ Implicit Flow: fragment contains tokens
+    if (rawHash.includes('access_token=')) {
+      const fragment = rawHash.startsWith('#/') ? rawHash.slice(2) : rawHash.slice(1);
+      const params = new URLSearchParams(fragment);
+      const at = params.get('access_token');
+      const rt = params.get('refresh_token');
+      dbg('Detected implicit tokens:', !!at, !!rt);
+      if (at && rt) {
+        supabase.auth
+          .setSession({ access_token: at, refresh_token: rt })
+          .then(({ data: { session }, error }) => {
+            if (error) err('setSession error', error.message);
+            else {
+              dbg('setSession session', session);
+              handleUser(session.user);
+            }
+            window.history.replaceState(null, '', url.pathname + '#/');
+          })
+          .catch(e => err('setSession exception', e));
+        return;
+      }
+    }
+
+    // 3️⃣ Restore any existing session
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (error) err('getSession error', error.message);
       dbg('initial getSession', session);
@@ -105,8 +135,10 @@ export default function Home() {
       }
     });
 
-    // 2️⃣ Listen for SIGNED_IN events
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    // 4️⃣ Listen for SIGNED_IN events
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
       dbg('onAuthStateChange', event, session);
       if (session?.user) {
         dbg('Session via onAuthStateChange');
@@ -128,12 +160,9 @@ export default function Home() {
    * ---------------------------------------------------------------- */
   const login = () => {
     dbg('login click, starting OAuth');
-    supabase.auth.signInWithOAuth({
-      provider: 'github',
-      options: {
-        redirectTo: 'https://begliado.github.io/RPG_HP/',
-      },
-    }).catch(e => err('signInWithOAuth error', e));
+    supabase.auth
+      .signInWithOAuth({ provider: 'github', options: { redirectTo: 'https://begliado.github.io/RPG_HP/' } })
+      .catch(e => err('signInWithOAuth error', e));
   };
 
   /* ----------------------------------------------------------------
