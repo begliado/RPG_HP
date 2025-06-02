@@ -5,7 +5,7 @@ import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 
 /* ------------------------------------------------------------------
- * Debug utilities (toggle with VITE_DEBUG=true)
+ * Debug utilities (toggle with VITE_DEBUG=true in .env)
  * ------------------------------------------------------------------ */
 const DEBUG = import.meta.env.VITE_DEBUG === 'true';
 const dbg = (...args) => DEBUG && console.debug('[Home]', ...args);
@@ -23,12 +23,39 @@ export default function Home() {
   const [characters, setCharacters] = useState([]);
 
   /* ----------------------------------------------------------------
-   * Initialize data for authenticated user
+   * Après avoir récupéré un code OAuth dans l’URL, échangez-le contre
+   * une session Supabase (PKCE flow)
+   * ---------------------------------------------------------------- */
+  async function exchangeCode() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (!code) {
+      dbg('Aucun code dans l’URL');
+      return false;
+    }
+
+    dbg('Found OAuth code in URL:', code);
+    try {
+      const { data, error } = await supabase.auth.exchangeCodeForSession({ code });
+      if (error) {
+        err('exchangeCodeForSession error', error);
+        return false;
+      }
+      dbg('Session after exchange:', data.session);
+      return true;
+    } catch (e) {
+      err('exchangeCodeForSession exception', e);
+      return false;
+    }
+  }
+
+  /* ----------------------------------------------------------------
+   * Initialisation des données (profile + personnages) pour user authentifié
    * ---------------------------------------------------------------- */
   async function initData(user) {
     dbg('initData start for user', user.id);
     try {
-      // Upsert profile
+      // Upsert profile (création si nécessaire)
       info('Upserting profile for', user.id);
       const { data: upserted, error: upsertError } = await supabase
         .from('profiles')
@@ -42,7 +69,7 @@ export default function Home() {
         dbg('Upsert result', upserted);
       }
 
-      // Fetch profile flags
+      // Récupérer flags (is_verified, is_mj)
       info('Fetching profile flags for', user.id);
       const { data: p, error: profileErr } = await supabase
         .from('profiles')
@@ -56,7 +83,7 @@ export default function Home() {
         setProfile({ is_verified: p.is_verified, is_mj: p.is_mj });
       }
 
-      // Fetch characters
+      // Récupérer personnages existants
       info('Fetching characters for', user.id);
       const { data: chars, error: charErr } = await supabase
         .from('characters')
@@ -77,26 +104,26 @@ export default function Home() {
   }
 
   /* ----------------------------------------------------------------
-   * Handle login button click
+   * Bouton “Se connecter” déclenche OAuth GitHub (PKCE)
    * ---------------------------------------------------------------- */
   const login = async () => {
-    dbg('login clicked – current href:', window.location.href);
-    info('Starting OAuth signInWithOAuth');
+    dbg('login clicked – href actuelle:', window.location.href);
+    info('Starting OAuth signInWithOAuth (code flow PKCE)');
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
-        options: { redirectTo: 'https://begliado.github.io/RPG_HP/' }
+        /* – optionnel – vous pouvez forcer un `redirectTo` si nécessaire, 
+           mais assurez-vous que “Redirect URLs” est bien configuré
+           dans Supabase Dashboard pour https://begliado.github.io/RPG_HP/ */
+        options: { redirectTo: 'https://begliado.github.io/RPG_HP/' }  
       });
       if (error) {
         err('signInWithOAuth error', error);
       } else if (data?.url) {
         dbg('Redirecting to OAuth URL:', data.url);
-        // Try both replace and href for maximum compatibility
         window.location.replace(data.url);
-        window.location.href = data.url;
-        dbg('After window.location.assign – this should never log if navigation succeeds');
       } else {
-        warn('No OAuth URL returned');
+        warn('Aucun URL OAuth retourné');
       }
     } catch (e) {
       err('signInWithOAuth exception', e);
@@ -104,38 +131,51 @@ export default function Home() {
   };
 
   /* ----------------------------------------------------------------
-   * Listen for authentication state
+   * Hook principal pour :
+   * 1) si un “code” est présent dans l’URL → appeler `exchangeCodeForSession()`
+   * 2) restaurer la session Supabase (si présente)
+   * 3) écoute des événements onAuthStateChange
    * ---------------------------------------------------------------- */
   useEffect(() => {
     dbg('useEffect mount – href=', window.location.href);
-    // Initial session check
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
+
+    (async () => {
+      // 1️⃣ Si on a un code dans l’URL, échangez-le d’abord
+      const exchanged = await exchangeCode();
+      if (exchanged) {
+        // Quand exchange réussit, supabase.stocker la session dans localStorage
+        dbg('Code échangé avec succès → session stockée');
+      }
+
+      // 2️⃣ Récupérer la session stockée (le cas échéant)
+      const { data: { session }, error } = await supabase.auth.getSession();
       if (error) {
         err('getSession error', error);
       }
       dbg('getSession returned', session);
+
       if (session?.user) {
-        info('Session found on mount, user:', session.user.id);
+        info('Session existante au montage, user:', session.user.id);
         setUser(session.user);
         initData(session.user);
       } else {
-        info('No session on mount');
+        info('Pas de session au montage');
         setUser(null);
         setLoading(false);
       }
-    });
+    })();
 
-    // Auth state change listener
+    // 3️⃣ Écouteur onAuthStateChange pour capter les SIGNED_IN / SIGNED_OUT après callback
     const {
       data: { subscription }
     } = supabase.auth.onAuthStateChange((event, session) => {
       dbg('onAuthStateChange event', event, 'session', session);
       if (session?.user) {
-        info('SIGNED_IN event for', session.user.id);
+        info('SIGNED_IN event pour', session.user.id);
         setUser(session.user);
         initData(session.user);
       } else {
-        info('SIGNED_OUT or no session event');
+        info('SIGNED_OUT ou pas de session');
         setUser(null);
         setLoading(false);
       }
@@ -148,7 +188,7 @@ export default function Home() {
   }, []);
 
   /* ----------------------------------------------------------------
-   * Render logic
+   * Phase de rendu
    * ---------------------------------------------------------------- */
   dbg('Render phase, loading=', loading, 'user=', user);
 
