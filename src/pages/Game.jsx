@@ -1,24 +1,40 @@
-// src/pages/Game.jsx
+// Game.jsx
+import { useEffect, useState } from 'react';
+import { supabase } from '../supabaseClient';
+import { useNavigate, useParams } from 'react-router-dom';
 
-import React from 'react';
-import { Link } from 'react-router-dom';
+export default function Game() {
+  const navigate = useNavigate();
+  const { id } = useParams(); // si tu veux charger /game/:id
+  const [loading, setLoading] = useState(true);
 
-export default function GamePage() {
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.user) return navigate('/', { replace: true });
+
+      supabase
+        .from('characters')
+        .select('id')
+        .eq('user_id', session.user.id)
+        .single()
+        .then(({ data }) => {
+          if (!data) {
+            // pas de personnage : retour sur création
+            navigate('/create-character', { replace: true });
+          } else {
+            setLoading(false);
+          }
+        })
+        .catch(() => navigate('/', { replace: true }));
+    });
+  }, [navigate]);
+
+  if (loading) return <p>Chargement de votre partie…</p>;
+
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Salon de jeu</h1>
-      <ul className="list-disc list-inside mt-2">
-        <li>
-          <Link to="/character/test-student" className="text-blue-600 underline">
-            Voir mon personnage test
-          </Link>
-        </li>
-        <li>
-          <Link to="/mj" className="text-blue-600 underline">
-            Dashboard MJ
-          </Link>
-        </li>
-      </ul>
+    <div>
+      <h1>Bienvenue dans le jeu</h1>
+      {/* …contenu du jeu… */}
     </div>
   );
 }
