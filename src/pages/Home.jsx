@@ -27,8 +27,17 @@ export default function Home() {
    * une session Supabase (PKCE flow)
    * ---------------------------------------------------------------- */
   async function exchangeCode() {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
+    // Try to read ?code= from search first
+    let params = new URLSearchParams(window.location.search);
+    let code = params.get('code');
+
+    // With HashRouter on GitHub Pages, the provider may append the query
+    // string after the hash (e.g. https://host/#/?code=XXX). In this case
+    // window.location.search is empty, so fallback to parsing location.hash.
+    if (!code && window.location.hash.includes('code=')) {
+      params = new URLSearchParams(window.location.hash.split('?')[1]);
+      code = params.get('code');
+    }
     if (!code) {
       dbg('Aucun code dans l’URL');
       return false;
@@ -42,6 +51,15 @@ export default function Home() {
         return false;
       }
       dbg('Session after exchange:', data.session);
+
+      // Clean URL to remove the auth code so refreshing doesn't retry the exchange
+      const url = new URL(window.location.href);
+      url.search = '';
+      if (url.hash.includes('?')) {
+        url.hash = url.hash.split('?')[0];
+      }
+      window.history.replaceState({}, '', url);
+
       return true;
     } catch (e) {
       err('exchangeCodeForSession exception', e);
