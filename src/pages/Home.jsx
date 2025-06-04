@@ -104,14 +104,14 @@ export default function Home() {
   }
 
   /* ----------------------------------------------------------------
-   * Bouton “Se connecter” déclenche OAuth GitHub (PKCE)
+   * Bouton “Se connecter” déclenche OAuth Discord (PKCE)
    * ---------------------------------------------------------------- */
   const login = async () => {
     dbg('login clicked – href actuelle:', window.location.href);
     info('Starting OAuth signInWithOAuth (code flow PKCE)');
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'github',
+        provider: 'discord',
         /* – optionnel – vous pouvez forcer un `redirectTo` si nécessaire, 
            mais assurez-vous que “Redirect URLs” est bien configuré
            dans Supabase Dashboard pour https://begliado.github.io/RPG_HP/ */
@@ -208,7 +208,7 @@ export default function Home() {
           onClick={login}
           className="px-6 py-3 bg-blue-700 hover:bg-blue-600 rounded-lg text-white font-medium shadow"
         >
-          Se connecter avec GitHub
+          Se connecter avec Discord
         </button>
       </div>
     );
