@@ -112,6 +112,7 @@ export default function Home() {
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'discord',
+
         /* – optionnel – vous pouvez forcer un `redirectTo` si nécessaire, 
            mais assurez-vous que “Redirect URLs” est bien configuré
            dans Supabase Dashboard pour https://begliado.github.io/RPG_HP/ */
@@ -209,6 +210,7 @@ export default function Home() {
           className="px-6 py-3 bg-blue-700 hover:bg-blue-600 rounded-lg text-white font-medium shadow"
         >
           Se connecter avec Discord
+
         </button>
       </div>
     );
