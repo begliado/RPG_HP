@@ -37,9 +37,6 @@ export default function CreateResources() {
       setSpells(data || []);
     }
   };
-  const [bookTitle, setBookTitle] = useState('');
-  const [bookAuthor, setBookAuthor] = useState('');
-
   useEffect(() => {
     dbg('Checking session for CreateResources page');
     supabase.auth.getSession().then(({ data: { session } }) => {
