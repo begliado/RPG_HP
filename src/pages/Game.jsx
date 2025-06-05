@@ -3,15 +3,26 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate, useParams } from 'react-router-dom';
 
+const DEBUG = import.meta.env.VITE_DEBUG === 'true';
+const dbg = (...args) => DEBUG && console.debug('[Game]', ...args);
+const info = (...args) => console.info('[Game]', ...args);
+const warn = (...args) => console.warn('[Game]', ...args);
+const err = (...args) => console.error('[Game]', ...args);
+
 export default function Game() {
   const navigate = useNavigate();
   const { id } = useParams(); // si tu veux charger /game/:id
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    dbg('Checking session for Game page');
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session?.user) return navigate('/', { replace: true });
+      if (!session?.user) {
+        info('Pas de session, redirection /');
+        return navigate('/', { replace: true });
+      }
 
+      info('Session ok, vérification personnage existant');
       supabase
         .from('characters')
         .select('id')
@@ -19,13 +30,17 @@ export default function Game() {
         .single()
         .then(({ data }) => {
           if (!data) {
-            // pas de personnage : retour sur création
+            warn('Aucun personnage, redirection /create-character');
             navigate('/create-character', { replace: true });
           } else {
+            dbg('Personnage trouvé, accès jeu');
             setLoading(false);
           }
         })
-        .catch(() => navigate('/', { replace: true }));
+        .catch((e) => {
+          err('Erreur fetch personnage', e);
+          navigate('/', { replace: true });
+        });
     });
   }, [navigate]);
 
