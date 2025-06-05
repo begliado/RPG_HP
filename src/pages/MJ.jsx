@@ -3,17 +3,24 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 
+const DEBUG = import.meta.env.VITE_DEBUG === 'true';
+const dbg = (...args) => DEBUG && console.debug('[MJ]', ...args);
+const info = (...args) => console.info('[MJ]', ...args);
+const warn = (...args) => console.warn('[MJ]', ...args);
+const err = (...args) => console.error('[MJ]', ...args);
+
 export default function MJ() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    dbg('Checking session for MJ page');
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session?.user) {
-        // pas connecté, on redirige
+        info('Aucune session, redirection vers /');
         return navigate('/', { replace: true });
       }
-      // on fetch le profil
+      info('Session ok, vérification rôle MJ');
       supabase
         .from('profiles')
         .select('is_mj')
@@ -21,13 +28,17 @@ export default function MJ() {
         .single()
         .then(({ data }) => {
           if (!data?.is_mj) {
-            // pas MJ, renvoyer au Home ou “accès refusé”
+            warn('Utilisateur non MJ, redirection /');
             navigate('/', { replace: true });
           } else {
+            dbg('Accès MJ autorisé');
             setLoading(false);
           }
         })
-        .catch(() => navigate('/', { replace: true }));
+        .catch((e) => {
+          err('Erreur fetch profil', e);
+          navigate('/', { replace: true });
+        });
     });
   }, [navigate]);
 

@@ -17,6 +17,23 @@ export default function Home() {
   dbg('Component render start, href=', window.location.href);
 
   const navigate = useNavigate();
+
+  const goToMj = () => {
+    dbg('navigate("/mj")');
+    navigate('/mj');
+  };
+
+  const goToCharacter = () => {
+    if (characters[0]) {
+      dbg('navigate("/character/" + characters[0].id)');
+      navigate(`/character/${characters[0].id}`);
+    }
+  };
+
+  const goToCreateCharacter = () => {
+    dbg('navigate("/create-character")');
+    navigate('/create-character');
+  };
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState({ is_verified: false, is_mj: false });
@@ -246,21 +263,21 @@ export default function Home() {
 
       {profile.is_mj ? (
         <button
-          onClick={() => navigate('/mj')}
+          onClick={goToMj}
           className="mt-4 px-4 py-2 bg-green-600 rounded"
         >
           Tableau de bord MJ
         </button>
       ) : characters.length > 0 ? (
         <button
-          onClick={() => navigate(`/character/${characters[0].id}`)}
+          onClick={goToCharacter}
           className="mt-4 px-4 py-2 bg-blue-600 rounded"
         >
           Accéder à mon personnage ({characters[0].name})
         </button>
       ) : profile.is_verified ? (
         <button
-          onClick={() => navigate('/create-character')}
+          onClick={goToCreateCharacter}
           className="mt-4 px-4 py-2 bg-yellow-600 rounded"
         >
           Créer mon personnage
