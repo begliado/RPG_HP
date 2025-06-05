@@ -34,6 +34,10 @@ export default function Home() {
     dbg('navigate("/create-character")');
     navigate('/create-character');
   };
+  const goToSpells = () => {
+    dbg('navigate("/spells")');
+    navigate('/spells');
+  };
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState({ is_verified: false, is_mj: false });
@@ -285,6 +289,9 @@ export default function Home() {
       ) : (
         <p className="mt-4">Votre compte est en attente de validation par le MJ.</p>
       )}
+      <button onClick={goToSpells} className="mt-4 px-4 py-2 bg-purple-600 rounded">
+        Liste des sorts
+      </button>
     </div>
   );
 }
