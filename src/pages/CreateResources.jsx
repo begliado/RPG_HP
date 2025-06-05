@@ -37,6 +37,9 @@ export default function CreateResources() {
       setSpells(data || []);
     }
   };
+  const [bookTitle, setBookTitle] = useState('');
+  const [bookAuthor, setBookAuthor] = useState('');
+
   useEffect(() => {
     dbg('Checking session for CreateResources page');
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -57,6 +60,7 @@ export default function CreateResources() {
           } else {
             dbg('Accès MJ autorisé pour ressources');
             loadSpells();
+
             setLoading(false);
           }
         })
@@ -82,6 +86,7 @@ export default function CreateResources() {
         range: spellRange,
         duration: spellDuration,
       });
+
     if (error) {
       err('insert spell', error);
     } else {
