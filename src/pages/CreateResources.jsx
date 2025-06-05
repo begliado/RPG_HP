@@ -37,7 +37,6 @@ export default function CreateResources() {
       setSpells(data || []);
     }
   };
-
   useEffect(() => {
     dbg('Checking session for CreateResources page');
     supabase.auth.getSession().then(({ data: { session } }) => {
