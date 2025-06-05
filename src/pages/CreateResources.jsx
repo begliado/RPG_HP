@@ -15,6 +15,28 @@ export default function CreateResources() {
   const [loading, setLoading] = useState(true);
   const [spellName, setSpellName] = useState('');
   const [spellDesc, setSpellDesc] = useState('');
+  const [spellLevel, setSpellLevel] = useState('');
+  const [spellSchool, setSpellSchool] = useState('');
+  const [spellCost, setSpellCost] = useState('');
+  const [spellCastTime, setSpellCastTime] = useState('');
+  const [spellRange, setSpellRange] = useState('');
+  const [spellDuration, setSpellDuration] = useState('');
+  const [spells, setSpells] = useState([]);
+  const [bookTitle, setBookTitle] = useState('');
+  const [bookAuthor, setBookAuthor] = useState('');
+
+  const loadSpells = async () => {
+    info('Chargement des sorts');
+    const { data, error } = await supabase
+      .from('spells')
+      .select('*')
+      .order('name');
+    if (error) {
+      err('fetch spells', error);
+    } else {
+      setSpells(data || []);
+    }
+  };
   const [bookTitle, setBookTitle] = useState('');
   const [bookAuthor, setBookAuthor] = useState('');
 
@@ -37,6 +59,8 @@ export default function CreateResources() {
             navigate('/', { replace: true });
           } else {
             dbg('Accès MJ autorisé pour ressources');
+            loadSpells();
+
             setLoading(false);
           }
         })
@@ -52,12 +76,29 @@ export default function CreateResources() {
     info('Création sort', spellName);
     const { error } = await supabase
       .from('spells')
-      .insert({ name: spellName, description: spellDesc });
+      .insert({
+        name: spellName,
+        description: spellDesc,
+        level: spellLevel,
+        school: spellSchool,
+        cost: spellCost,
+        cast_time: spellCastTime,
+        range: spellRange,
+        duration: spellDuration,
+      });
+
     if (error) {
       err('insert spell', error);
     } else {
       setSpellName('');
       setSpellDesc('');
+      setSpellLevel('');
+      setSpellSchool('');
+      setSpellCost('');
+      setSpellCastTime('');
+      setSpellRange('');
+      setSpellDuration('');
+      loadSpells();
     }
   };
 
@@ -98,10 +139,56 @@ export default function CreateResources() {
             onChange={(e) => setSpellDesc(e.target.value)}
             placeholder="Description"
           />
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              className="w-full p-2 rounded bg-gray-800"
+              value={spellLevel}
+              onChange={(e) => setSpellLevel(e.target.value)}
+              placeholder="Niveau"
+            />
+            <input
+              className="w-full p-2 rounded bg-gray-800"
+              value={spellSchool}
+              onChange={(e) => setSpellSchool(e.target.value)}
+              placeholder="École"
+            />
+            <input
+              className="w-full p-2 rounded bg-gray-800"
+              value={spellCost}
+              onChange={(e) => setSpellCost(e.target.value)}
+              placeholder="Coût/Mana"
+            />
+            <input
+              className="w-full p-2 rounded bg-gray-800"
+              value={spellCastTime}
+              onChange={(e) => setSpellCastTime(e.target.value)}
+              placeholder="Temps d'incantation"
+            />
+            <input
+              className="w-full p-2 rounded bg-gray-800"
+              value={spellRange}
+              onChange={(e) => setSpellRange(e.target.value)}
+              placeholder="Portée"
+            />
+            <input
+              className="w-full p-2 rounded bg-gray-800"
+              value={spellDuration}
+              onChange={(e) => setSpellDuration(e.target.value)}
+              placeholder="Durée"
+            />
+          </div>
           <button className="px-4 py-2 bg-green-600 rounded" type="submit">
             Sauvegarder le sort
           </button>
         </form>
+        <h3 className="text-lg font-semibold mt-4">Sorts existants</h3>
+        <ul className="mt-2 space-y-1">
+          {spells.map((s) => (
+            <li key={s.id} className="bg-gray-800 p-2 rounded">
+              <span className="font-medium">{s.name}</span> – niveau {s.level}
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section>

@@ -9,5 +9,7 @@ Chaque joueur incarne un élève de Poudlard, se connecte via Discord, est valid
 - **Dashboard MJ** pour gérer les accès et créer des événements  
 - **Interface React + Tailwind** hébergée sur GitHub Pages  
 - **Stockage des actions** et **logs de consultations** dans Supabase  
-- **Événements** automatisés et interventions ponctuelles du MJ  
+- **Événements** automatisés et interventions ponctuelles du MJ
 - **Intégration Discord** pour recevoir des notifications en temps réel
+- **Gestion des ressources** (sorts, livres) via une page réservée au MJ
+- **Liste des sorts** consultable par tous les joueurs

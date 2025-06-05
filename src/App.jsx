@@ -9,6 +9,8 @@ import GamePage from './pages/Game';
 import CharacterPage from './pages/Character';
 import CreateCharacter from './pages/CreateCharacter';
 import CreateResources from './pages/CreateResources';
+import Spells from './pages/Spells';
+
 
 export default function App() {
   return (
@@ -19,6 +21,7 @@ export default function App() {
         <Route path="/game" element={<GamePage />} />
         <Route path="/character/:id" element={<CharacterPage />} />
         <Route path="/create-character" element={<CreateCharacter />} />
+        <Route path="/spells" element={<Spells />} />
         <Route path="/create-resources" element={<CreateResources />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
