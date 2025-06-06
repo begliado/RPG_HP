@@ -1,7 +1,7 @@
 // Game.jsx
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 const DEBUG = import.meta.env.VITE_DEBUG === 'true';
 const dbg = (...args) => DEBUG && console.debug('[Game]', ...args);
@@ -11,7 +11,6 @@ const err = (...args) => console.error('[Game]', ...args);
 
 export default function Game() {
   const navigate = useNavigate();
-  const { id } = useParams(); // si tu veux charger /game/:id
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,8 +46,8 @@ export default function Game() {
   if (loading) return <p>Chargement de votre partie…</p>;
 
   return (
-    <div>
-      <h1>Bienvenue dans le jeu</h1>
+    <div className="p-4 text-gray-100">
+      <h1 className="text-2xl font-bold mb-4">Bienvenue dans le jeu</h1>
       {/* …contenu du jeu… */}
     </div>
   );
