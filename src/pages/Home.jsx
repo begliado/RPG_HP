@@ -24,10 +24,8 @@ export default function Home() {
   };
 
   const goToCharacter = () => {
-    if (characters[0]) {
-      dbg('navigate("/character/" + characters[0].id)');
-      navigate(`/character/${characters[0].id}`);
-    }
+    dbg('navigate("/manage-character")');
+    navigate('/manage-character');
   };
 
   const goToCreateCharacter = () => {
@@ -265,21 +263,22 @@ export default function Home() {
       <p>Statut de vérification : {profile.is_verified ? '✅ Vérifié' : '⏳ En attente'}</p>
       <p>Rôle : {profile.is_mj ? 'MJ' : 'Joueur'}</p>
 
-      {profile.is_mj ? (
+      {profile.is_mj && (
         <button
           onClick={goToMj}
           className="mt-4 px-4 py-2 bg-green-600 rounded"
         >
           Tableau de bord MJ
         </button>
-      ) : characters.length > 0 ? (
+      )}
+      {characters.length > 0 ? (
         <button
           onClick={goToCharacter}
           className="mt-4 px-4 py-2 bg-blue-600 rounded"
         >
           Accéder à mon personnage ({characters[0].name})
         </button>
-      ) : profile.is_verified ? (
+      ) : profile.is_verified || profile.is_mj ? (
         <button
           onClick={goToCreateCharacter}
           className="mt-4 px-4 py-2 bg-yellow-600 rounded"

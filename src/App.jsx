@@ -7,6 +7,7 @@ import Home from './pages/Home';
 import MJPage from './pages/MJ';
 import GamePage from './pages/Game';
 import CharacterPage from './pages/Character';
+import ManageCharacter from './pages/ManageCharacter';
 import CreateCharacter from './pages/CreateCharacter';
 import CreateResources from './pages/CreateResources';
 import Spells from './pages/Spells';
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/mj" element={<MJPage />} />
         <Route path="/game" element={<GamePage />} />
+        <Route path="/manage-character" element={<ManageCharacter />} />
         <Route path="/character/:id" element={<CharacterPage />} />
         <Route path="/create-character" element={<CreateCharacter />} />
         <Route path="/spells" element={<Spells />} />
